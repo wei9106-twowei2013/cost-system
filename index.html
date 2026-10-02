@@ -51,7 +51,7 @@ button{cursor:pointer}
 .setup-warn{background:#fff6e6;border:1px solid #f0d9a8;color:#7a5a1a;padding:10px 12px;border-radius:var(--r-sm);font-size:13px;margin-bottom:16px}
 
 /* App shell */
-header.top{display:flex;align-items:center;gap:12px;padding:14px 24px;background:var(--paper);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header.top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 24px;background:var(--paper);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
 header.top h1{font-size:17px;margin:0;flex:1}
 header.top .who{font-size:13px;color:var(--muted)}
 main{max-width:1080px;margin:0 auto;padding:24px}
@@ -224,6 +224,9 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
   <header class="top">
     <h1>圖威成本統計</h1>
     <span class="who" id="whoAmI"></span>
+    <button class="btn sm" data-action="export-backup" title="下載全部成本資料的 JSON 備份">匯出備份</button>
+    <button class="btn sm" data-action="import-backup" title="從 JSON 備份匯入（合併模式）">匯入備份</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
     <button class="btn sm" data-action="logout">登出</button>
   </header>
   <main id="main"></main>
@@ -559,6 +562,7 @@ function renderList() {
     <div class="bar-head">
       <h2>專案</h2>
       <div class="seg">${['進行中', '已結案', '全部'].map(f => `<button data-action="list-filter" data-f="${f}" class="${f === listFilter ? 'on' : ''}">${f}</button>`).join('')}</div>
+      <button class="btn" data-action="export-excel">匯出 Excel</button>
       <button class="btn" data-action="new-project">新增非通告專案</button>
     </div>
     <div class="plist">${rows || `<div class="empty">${items.length ? '這個分類沒有專案。' : '通告系統還沒有任何通告。'}</div>`}</div>
@@ -674,6 +678,7 @@ function renderDetail() {
       <div class="t"><h2>${esc(projName(p))}<span class="badge${projStatus(p) === '已結案' ? ' closed' : ''}">${projStatus(p)}</span></h2>
         <div class="sub">${noticeLine}${p.note ? '｜' + esc(p.note) : ''}</div></div>
       <div class="acts">
+        <button class="btn" data-action="export-excel" data-pid="${esc(p.id)}">匯出 Excel</button>
         <button class="btn" data-action="edit-project">編輯專案</button>
         <button class="btn danger" data-action="delete-project">刪除</button>
         <button class="btn primary" data-action="new-entry">新增成本項目</button>
@@ -955,11 +960,140 @@ async function unlinkEntry(id) {
   catch (err) { handleErr(err); }
 }
 
+
+/* ===== 匯出 Excel ===== */
+let xlsxLoading = null;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve();
+  return xlsxLoading ||= new Promise((ok, fail) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = ok; sc.onerror = () => { xlsxLoading = null; fail(new Error('Excel 元件載入失敗')); };
+    document.head.appendChild(sc);
+  });
+}
+const stamp = () => today().replace(/-/g, '');
+const safeName = s => String(s).replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
+function sheet(rows, widths) {
+  const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ '': '（無資料）' }]);
+  if (widths) ws['!cols'] = widths.map(w => ({ wch: w }));
+  return ws;
+}
+function projectRow(p) {
+  const s = summarize(p.id), b = Number(p.budget) || 0, L = linkage(p), h = L?.n.headerCfg || {};
+  return { '專案': projName(p), '狀態': projStatus(p), '地點': h.venue || '', '期間': h.date || '',
+    '預算': b, '預估成本': s.est, '已請款': s.inv, '已付款': s.paid, '預算餘額': b ? b - s.est : '',
+    '成本筆數': s.count, '未建立成本工項': L ? L.missing : '', '通告異動待確認': L ? L.changedEntries.length + L.orphans.length : '' };
+}
+function entryRows(ps) {
+  const out = [];
+  ps.forEach(p => {
+    const L = linkage(p);
+    entries.filter(e => e.projectId === p.id).sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(e => {
+      const s = L && e.slotId != null ? L.slotById(e.slotId) : null;
+      out.push({ '專案': projName(p), '日期': e.date || '', '工種': e.trade || '', '廠商': e.vendor || '', '項目內容': e.description || '',
+        '金額': Number(e.amount) || 0, '稅別': e.taxIncluded ? '含稅' : '未稅', '含稅金額': taxed(e), '進度': e.status || '',
+        '外包': e.isOutsource ? '是' : '', '對應通告工項': s ? `${range(s)} ${plain(s.desc).slice(0, 40)}` : (e.slotId != null ? '（通告已刪除）' : ''),
+        '檔案連結': e.fileLink || '', '備註': e.note || '' });
+    });
+  });
+  return out;
+}
+function tradeRows(ps) {
+  const out = [];
+  ps.forEach(p => {
+    const s = summarize(p.id), bt = p.budgetByTrade || {};
+    const ts_ = [...new Set([...tradeNames().filter(t => bt[t] || s.byTrade[t]), ...Object.keys(bt), ...Object.keys(s.byTrade)])];
+    ts_.forEach(t => {
+      const b = Number(bt[t]) || 0, x = s.byTrade[t] || { est: 0, inv: 0, paid: 0 };
+      out.push({ '專案': projName(p), '工種': t, '預算': b || '', '預估': x.est, '已請款': x.inv, '已付款': x.paid, '預算−預估': b ? b - x.est : '' });
+    });
+  });
+  return out;
+}
+function slotRows(p) {
+  const L = linkage(p); if (!L) return null;
+  return L.slots.map(s => {
+    const le = L.bySlot[s.id] || [];
+    return { '日期': range(s), '工種': s.type || '', '工作內容': plain(s.desc), '負責': (s.assignees || []).join('、'),
+      '成本筆數': le.length, '成本金額（含稅）': le.reduce((a, e) => a + taxed(e), 0),
+      '狀態': le.length ? (le.some(e => slotChanges(e, s).length) ? '通告有異動' : '已建立') : (L.ignored.has(s.id) ? '不計成本' : '未建立成本') };
+  });
+}
+async function exportExcel(projectId) {
+  try {
+    await loadXLSX();
+    const ps = projectId ? projects.filter(p => p.id === projectId)
+      : listItems().filter(i => i.p && (listFilter === '全部' || i.status === listFilter)).map(i => i.p);
+    if (!ps.length) return toast('目前沒有可匯出的專案', true);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet(ps.map(projectRow), [28, 8, 22, 22, 12, 12, 12, 12, 12, 9, 13, 13]), '專案總表');
+    XLSX.utils.book_append_sheet(wb, sheet(tradeRows(ps), [28, 12, 12, 12, 12, 12, 12]), '工種統計');
+    XLSX.utils.book_append_sheet(wb, sheet(entryRows(ps), [28, 11, 10, 16, 30, 12, 6, 12, 8, 6, 30, 30, 20]), '成本明細');
+    if (projectId) { const sr = slotRows(ps[0]); if (sr) XLSX.utils.book_append_sheet(wb, sheet(sr, [14, 10, 40, 16, 9, 14, 11]), '通告工項對照'); }
+    const name = projectId ? `成本統計_${safeName(projName(ps[0]))}_${stamp()}.xlsx` : `成本統計_${listFilter}_${stamp()}.xlsx`;
+    XLSX.writeFile(wb, name);
+    toast('已匯出 Excel');
+  } catch (err) { console.error(err); toast('匯出失敗：' + err.message, true); }
+}
+
+/* ===== 備份：匯出 / 匯入（合併模式，同通告系統） ===== */
+const plainDoc = d => {
+  const o = {};
+  for (const [k, v] of Object.entries(d)) o[k] = v?.toDate ? v.toDate().toISOString() : v;
+  return o;
+};
+function exportBackup() {
+  const backup = { version: 1, system: 'cost-system', exportedAt: new Date().toISOString(),
+    projects: projects.map(plainDoc), entries: entries.map(plainDoc) };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `成本統計系統備份_${today()}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('已匯出備份');
+}
+async function commitInChunks(list, fn) {
+  for (let i = 0; i < list.length; i += 400) {
+    const batch = writeBatch(db);
+    list.slice(i, i + 400).forEach(x => fn(batch, x));
+    await batch.commit();
+  }
+}
+async function importBackup(ev) {
+  const file = ev.target.files[0]; ev.target.value = '';
+  if (!file) return;
+  let b;
+  try { b = JSON.parse(await file.text()); } catch { return alert('檔案格式錯誤，請選擇成本統計系統的備份 JSON 檔案'); }
+  if (b?.system !== 'cost-system' || !Array.isArray(b.projects) || !Array.isArray(b.entries)) return alert('這不是成本統計系統的備份檔，無法匯入');
+  const pIds = new Set(projects.map(p => p.id)), eIds = new Set(entries.map(e => e.id));
+  const newP = b.projects.filter(p => p.id && !pIds.has(p.id));
+  const newE = b.entries.filter(e => e.id && !eIds.has(e.id));
+  if (!confirm(`即將匯入備份（合併模式）：\n\n✅ 新增專案 ${newP.length} 筆、成本項目 ${newE.length} 筆\n⏭ 系統中已存在的資料 → 保留不動\n\n確定要繼續嗎？`)) return;
+  const clean = ({ id, createdAt, updatedAt, ...rest }) => ({ ...rest, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  try {
+    // 先寫專案，再寫成本項目（資料庫規則要求成本項目對應的專案必須已存在）
+    await commitInChunks(newP, (batch, p) => batch.set(doc(db, 'cost_projects', p.id), { budget: 0, ...clean(p), name: p.name || '未命名專案', budget: Number(p.budget) || 0 }));
+    const allP = new Set([...pIds, ...newP.map(p => p.id)]);
+    const okE = newE.filter(e => allP.has(e.projectId));
+    await commitInChunks(okE, (batch, e) => batch.set(doc(db, 'cost_entries', e.id), clean(e)));
+    alert(`匯入完成！\n✅ 新增專案 ${newP.length} 筆、成本項目 ${okE.length} 筆\n⏭ 跳過已存在的資料${newE.length - okE.length ? `\n⚠️ ${newE.length - okE.length} 筆成本找不到對應專案，未匯入` : ''}`);
+  } catch (err) {
+    console.error(err);
+    alert('匯入過程發生錯誤，部分資料可能未完成，請檢查後重試（' + (err.code || err.message) + '）');
+  }
+}
+$('#importFile').addEventListener('change', importBackup);
+
 /* ===== 事件 ===== */
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-action]'); if (!b) return;
   const a = b.dataset.action;
   if (a === 'logout') { signOut(auth); return; }
+  if (a === 'export-excel') exportExcel(b.dataset.pid || null);
+  if (a === 'export-backup') exportBackup();
+  if (a === 'import-backup') $('#importFile').click();
   if (a === 'list-filter') { listFilter = b.dataset.f; renderList(); }
   if (a === 'new-project') openProjectModal(null);
   if (a === 'open-project') openProject(b.dataset.id);
