@@ -563,7 +563,7 @@ function renderList() {
       <h2>專案</h2>
       <div class="seg">${['進行中', '已結案', '全部'].map(f => `<button data-action="list-filter" data-f="${f}" class="${f === listFilter ? 'on' : ''}">${f}</button>`).join('')}</div>
       <button class="btn" data-action="export-excel">匯出 Excel</button>
-      <button class="btn" data-action="new-project">新增非通告專案</button>
+      <button class="btn primary" data-action="new-project">新增專案</button>
     </div>
     <div class="plist">${rows || `<div class="empty">${items.length ? '這個分類沒有專案。' : '通告系統還沒有任何通告。'}</div>`}</div>
     ${shown.some(i => i.p) ? legendHTML : ''}`;
