@@ -233,13 +233,15 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
 <div class="modal hidden" id="projectModal" role="dialog" aria-modal="true" aria-labelledby="pmTitle">
   <div class="box">
     <h3 id="pmTitle">新增專案</h3>
+    <div class="field"><label for="pNoticeId">對應工作通告</label><select id="pNoticeId"></select></div>
+    <p class="hint">連結後，通告中的工作項目會自動帶入對照，通告有新增或修改時也會同步顯示。</p>
+    <p class="hint hidden" id="pFollow">專案名稱與狀態會跟著通告自動更新。</p>
     <div class="field"><label for="pName">專案名稱</label><input id="pName" placeholder="例：嘉博-葉王展"></div>
     <div class="row2">
       <div class="field"><label for="pStatus">狀態</label><select id="pStatus"><option>進行中</option><option>已結案</option></select></div>
       <div class="field"><label for="pBudget">總預算（含稅）</label><input id="pBudget" type="number" inputmode="numeric" min="0" placeholder="留空則使用分項合計"></div>
     </div>
-    <div class="field"><label for="pNoticeId">對應工作通告</label><select id="pNoticeId"></select></div>
-    <p class="hint">連結後，通告中的工作項目會自動帶入對照，通告有新增或修改時也會同步顯示。</p>
+    
     <details class="more" id="pTradeDetails">
       <summary>依工種設定預算</summary>
       <div class="tgrid" id="pTradeGrid"></div>
@@ -481,25 +483,60 @@ function render() {
   }
 }
 
-function renderList() {
-  const active = projects.filter(p => p.status !== '已結案');
-  let tb = 0, te = 0, tp = 0;
-  active.forEach(p => { const s = summarize(p.id); tb += Number(p.budget) || 0; te += s.est; tp += s.paid; });
-  const shown = projects
-    .filter(p => listFilter === '全部' || (listFilter === '已結案' ? p.status === '已結案' : p.status !== '已結案'))
-    .sort((a, b) => ts(b.createdAt) - ts(a.createdAt));
+/* 專案顯示用：連結通告時，名稱與狀態跟隨通告 */
+const projName = p => { const n = p.noticeId && notices.get(p.noticeId); return n ? noticeTitle(n) : p.name; };
+const projStatus = p => { const n = p.noticeId && notices.get(p.noticeId); return n ? (n.status === 'done' ? '已結案' : '進行中') : (p.status || '進行中'); };
+const noticeSort = (a, b) => {
+  const ao = a.noticeOrder, bo = b.noticeOrder;
+  if (ao != null && bo != null) return ao - bo;
+  if (ao != null) return -1; if (bo != null) return 1;
+  return ts(b.updatedAt) - ts(a.updatedAt);
+};
 
-  const rows = shown.map(p => {
+/* 列表項目：通告首頁的每一張通告 + 沒有連結通告的成本專案 */
+function listItems() {
+  const byNotice = new Map(projects.filter(p => p.noticeId).map(p => [p.noticeId, p]));
+  const ns = [...notices.values()].sort(noticeSort);
+  const items = [
+    ...ns.filter(n => n.status !== 'done').map(n => ({ n, p: byNotice.get(n.id), status: '進行中' })),
+    ...ns.filter(n => n.status === 'done').map(n => ({ n, p: byNotice.get(n.id), status: '已結案' })),
+  ];
+  projects.filter(p => !p.noticeId || !notices.has(p.noticeId))
+    .sort((a, b) => ts(b.createdAt) - ts(a.createdAt))
+    .forEach(p => items.push({ n: null, p, status: p.status || '進行中' }));
+  return items;
+}
+
+function renderList() {
+  const items = listItems();
+  const activeP = items.filter(i => i.p && i.status !== '已結案').map(i => i.p);
+  let tb = 0, te = 0, tp = 0;
+  activeP.forEach(p => { const s = summarize(p.id); tb += Number(p.budget) || 0; te += s.est; tp += s.paid; });
+  const shown = items.filter(i => listFilter === '全部' || i.status === listFilter);
+
+  const rows = shown.map(({ n, p, status }) => {
+    const h = n?.headerCfg || {};
+    const place = n ? [h.venue, h.date].filter(Boolean).map(esc).join('｜') : '';
+    const badge = `<span class="badge${status === '已結案' ? ' closed' : ''}">${status}</span>`;
+    if (!p) {
+      const cnt = Array.isArray(n.data) ? n.data.length : 0;
+      return `<button class="prow" data-action="open-notice" data-nid="${esc(n.id)}">
+        <div><div class="pname">${esc(noticeTitle(n))}${badge}</div><div class="psub">${place || '&nbsp;'}</div></div>
+        <div><div class="psub">${cnt} 筆工作安排｜尚未開始記錄成本</div></div>
+        <div class="pfig"><span class="btn sm">開始記錄成本</span></div>
+      </button>`;
+    }
     const s = summarize(p.id), budget = Number(p.budget) || 0, diff = budget - s.est, L = linkage(p);
-    const sub = [`${s.count} 筆項目`];
+    const sub = [];
+    if (place) sub.push(place);
+    sub.push(`${s.count} 筆成本`);
     if (L) {
-      sub.push('通告：' + esc(noticeTitle(L.n)));
       if (L.missing) sub.push(`<b style="color:#b26a00">未建立成本 ${L.missing} 項</b>`);
       if (L.changedEntries.length + L.orphans.length) sub.push(`<b style="color:var(--over)">通告異動 ${L.changedEntries.length + L.orphans.length} 筆</b>`);
     } else if (p.noticeId) sub.push('<b style="color:var(--over)">對應通告已刪除</b>');
     return `<button class="prow" data-action="open-project" data-id="${esc(p.id)}">
       <div>
-        <div class="pname">${esc(p.name)}<span class="badge${p.status === '已結案' ? ' closed' : ''}">${esc(p.status || '進行中')}</span></div>
+        <div class="pname">${esc(projName(p))}${badge}</div>
         <div class="psub">${sub.join('｜')}</div>
       </div>
       <div>
@@ -514,7 +551,7 @@ function renderList() {
 
   $('#main').innerHTML = `
     <div class="overview num">
-      <div><span>進行中專案</span><strong>${active.length}</strong></div>
+      <div><span>進行中專案</span><strong>${items.filter(i => i.status !== '已結案').length}</strong></div>
       <div><span>進行中總預算</span><strong>${fmt(tb)}</strong></div>
       <div><span>進行中預估成本</span><strong class="${te > tb && tb > 0 ? 'neg' : ''}">${fmt(te)}</strong></div>
       <div><span>進行中已付款</span><strong>${fmt(tp)}</strong></div>
@@ -522,10 +559,32 @@ function renderList() {
     <div class="bar-head">
       <h2>專案</h2>
       <div class="seg">${['進行中', '已結案', '全部'].map(f => `<button data-action="list-filter" data-f="${f}" class="${f === listFilter ? 'on' : ''}">${f}</button>`).join('')}</div>
-      <button class="btn primary" data-action="new-project">新增專案</button>
+      <button class="btn" data-action="new-project">新增非通告專案</button>
     </div>
-    <div class="plist">${rows || `<div class="empty">${projects.length ? '這個分類沒有專案。' : '還沒有任何專案。選一張工作通告建立專案，工作項目會自動帶入。'}${projects.length ? '' : '<br><button class="btn primary" data-action="new-project">新增專案</button>'}</div>`}</div>
-    ${shown.length ? legendHTML : ''}`;
+    <div class="plist">${rows || `<div class="empty">${items.length ? '這個分類沒有專案。' : '通告系統還沒有任何通告。'}</div>`}</div>
+    ${shown.some(i => i.p) ? legendHTML : ''}`;
+}
+
+/* 點選尚未記錄成本的通告：自動建立對應的成本專案 */
+let creatingFor = null;
+async function openNotice(nid) {
+  const exist = projects.find(p => p.noticeId === nid);
+  if (exist) return openProject(exist.id);
+  if (creatingFor) return;
+  const n = notices.get(nid); if (!n) return;
+  creatingFor = nid;
+  try {
+    const ref = await addDoc(collection(db, 'cost_projects'), {
+      name: noticeTitle(n), status: n.status === 'done' ? '已結案' : '進行中', budget: 0, budgetByTrade: {},
+      noticeId: nid, noticeRef: noticeTitle(n), note: '', ignoredSlots: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+    });
+    openProject(ref.id);
+  } catch (err) { handleErr(err); }
+  finally { creatingFor = null; }
+}
+function openProject(id) {
+  currentProjectId = id; view = 'detail'; slotFilter = 'all'; entryFilter = { trade: '', status: '', q: '' };
+  render(); window.scrollTo(0, 0);
 }
 
 function entryChip(e) {
@@ -582,7 +641,7 @@ function slotSectionHTML(p, L) {
       <div class="chg"><span>這個工項已從通告刪除，請確認這筆成本是否還需要。</span></div></div>
       <div class="sacts"><button class="btn sm" data-action="unlink-entry" data-id="${esc(e.id)}">保留並取消連結</button><button class="btn ghost sm" data-action="delete-entry" data-id="${esc(e.id)}">刪除成本</button></div></div>`).join('') : '';
 
-  return `<h3 class="sec">通告工項對照：${esc(noticeTitle(L.n))}</h3>
+  return `<h3 class="sec">通告工項對照</h3>
     <div class="link-sum">
       <button class="chip${slotFilter === 'all' ? ' on' : ''}" data-action="slot-filter" data-f="all">全部工項 <b class="num">${total}</b>（已建立 ${linked}）</button>
       <button class="chip warn${slotFilter === 'missing' ? ' on' : ''}" data-action="slot-filter" data-f="missing">未建立成本 <b class="num">${L.missing}</b></button>
@@ -607,12 +666,12 @@ function renderDetail() {
       <td class="${b && d < 0 ? 'neg' : ''}">${b ? fmt(d) : '—'}</td></tr>`;
   }).join('');
   const sumBt = Object.values(bt).reduce((a, v) => a + (Number(v) || 0), 0);
-  const noticeLine = L ? '對應通告：' + esc(noticeTitle(L.n)) : p.noticeId ? '<span class="neg">對應的通告已被刪除</span>' : p.noticeRef ? '對應通告：' + esc(p.noticeRef) : '未連結工作通告';
+  const noticeLine = L ? [L.n.headerCfg?.venue, L.n.headerCfg?.date].filter(Boolean).map(esc).join('｜') || '已連結工作通告' : p.noticeId ? '<span class="neg">對應的通告已被刪除</span>' : p.noticeRef ? '對應通告：' + esc(p.noticeRef) : '未連結工作通告';
 
   $('#main').innerHTML = `
     <div class="crumb"><button class="btn ghost sm" data-action="back">← 回到專案列表</button></div>
     <div class="dhead">
-      <div class="t"><h2>${esc(p.name)}<span class="badge${p.status === '已結案' ? ' closed' : ''}">${esc(p.status || '進行中')}</span></h2>
+      <div class="t"><h2>${esc(projName(p))}<span class="badge${projStatus(p) === '已結案' ? ' closed' : ''}">${projStatus(p)}</span></h2>
         <div class="sub">${noticeLine}${p.note ? '｜' + esc(p.note) : ''}</div></div>
       <div class="acts">
         <button class="btn" data-action="edit-project">編輯專案</button>
@@ -700,10 +759,13 @@ function fillNoticeSelect(selected) {
   $('#pNoticeId').innerHTML = '<option value="">不連結通告</option>' + list.map(n =>
     `<option value="${esc(n.id)}" ${n.id === selected ? 'selected' : ''}>${esc(noticeTitle(n))}${n.status === 'done' ? '（已結案）' : ''}${usedBy.has(n.id) ? '（已有成本專案）' : ''}</option>`).join('');
 }
-$('#pNoticeId').addEventListener('change', e => {
-  const n = notices.get(e.target.value);
-  if (n && !$('#pName').value.trim()) $('#pName').value = noticeTitle(n);
-});
+function syncModalToNotice() {
+  const n = notices.get($('#pNoticeId').value);
+  $('#pName').disabled = $('#pStatus').disabled = !!n;
+  if (n) { $('#pName').value = noticeTitle(n); $('#pStatus').value = n.status === 'done' ? '已結案' : '進行中'; }
+  $('#pFollow').classList.toggle('hidden', !n);
+}
+$('#pNoticeId').addEventListener('change', syncModalToNotice);
 $('#pTradeGrid').addEventListener('input', updateTradeSum);
 function updateTradeSum() {
   let sum = 0; document.querySelectorAll('#pTradeGrid input').forEach(i => sum += Number(i.value) || 0);
@@ -718,6 +780,7 @@ function openProjectModal(p) {
   $('#pBudget').value = p?.budget || '';
   $('#pNote').value = p?.note || '';
   fillNoticeSelect(p?.noticeId || '');
+  syncModalToNotice();
   const bt = p?.budgetByTrade || {};
   const names = tradeNames(); Object.keys(bt).forEach(t => { if (!names.includes(t)) names.push(t); });
   $('#pTradeGrid').innerHTML = names.map(t => `<label>${esc(t)}<input type="number" min="0" inputmode="numeric" data-trade="${esc(t)}" value="${bt[t] || ''}"></label>`).join('');
@@ -899,7 +962,8 @@ document.addEventListener('click', ev => {
   if (a === 'logout') { signOut(auth); return; }
   if (a === 'list-filter') { listFilter = b.dataset.f; renderList(); }
   if (a === 'new-project') openProjectModal(null);
-  if (a === 'open-project') { currentProjectId = b.dataset.id; view = 'detail'; slotFilter = 'all'; entryFilter = { trade: '', status: '', q: '' }; renderDetail(); window.scrollTo(0, 0); }
+  if (a === 'open-project') openProject(b.dataset.id);
+  if (a === 'open-notice') openNotice(b.dataset.nid);
   if (a === 'back') { view = 'list'; currentProjectId = null; renderList(); }
   if (a === 'edit-project') openProjectModal(projects.find(x => x.id === currentProjectId));
   if (a === 'delete-project') deleteProject();
