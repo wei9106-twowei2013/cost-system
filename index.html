@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>圖威成本統計</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#26233a; --muted:#77738a; --line:#e2dfea; --bg:#f4f3f8; --paper:#fff;
+  --brand:#6b5f9e; --brand-soft:#ecE9f5;
+  --quote:#cfc8e6; --invoice:#9d92c9; --paid:#4e4387;
+  --over:#c0504d; --ok:#3f8a6a;
+  --r-lg:14px; --r-sm:8px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.hidden{display:none!important}
+
+/* Buttons */
+.btn{border:1px solid var(--line);background:var(--paper);padding:8px 14px;border-radius:var(--r-sm);font-weight:500}
+.btn:hover{border-color:var(--brand)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.primary:hover{background:#5a4f8a}
+.btn.danger{color:var(--over)}
+.btn.danger:hover{border-color:var(--over)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--ink)}
+.btn.sm{padding:4px 10px;font-size:13px}
+
+/* Login */
+#loginView{min-height:100vh;display:grid;place-items:center;padding:24px}
+.login-box{width:100%;max-width:360px;background:var(--paper);border-radius:var(--r-lg);padding:32px 28px;border:1px solid var(--line)}
+.login-box h1{font-size:22px;margin:0 0 4px}
+.login-box p{color:var(--muted);margin:0 0 24px;font-size:14px}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:14px}
+.field label{font-size:13px;color:var(--muted);font-weight:500}
+.field input,.field select,.field textarea{border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 11px;background:#fff;width:100%}
+.field textarea{min-height:64px;resize:vertical}
+.msg{font-size:13px;margin-top:10px;min-height:1.2em}
+.msg.err{color:var(--over)}
+.setup-warn{background:#fff6e6;border:1px solid #f0d9a8;color:#7a5a1a;padding:10px 12px;border-radius:var(--r-sm);font-size:13px;margin-bottom:16px}
+
+/* App shell */
+header.top{display:flex;align-items:center;gap:12px;padding:14px 24px;background:var(--paper);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header.top h1{font-size:17px;margin:0;flex:1}
+header.top .who{font-size:13px;color:var(--muted)}
+main{max-width:1080px;margin:0 auto;padding:24px}
+
+/* Overview */
+.overview{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;margin-bottom:28px}
+.overview div{background:var(--paper);padding:14px 18px}
+.overview span{display:block;font-size:13px;color:var(--muted)}
+.overview strong{font-size:22px;font-weight:700}
+.bar-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.bar-head h2{font-size:18px;margin:0;flex:1}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;background:var(--paper)}
+.seg button{border:0;background:transparent;padding:6px 12px;font-size:13px;color:var(--muted)}
+.seg button.on{background:var(--brand-soft);color:var(--brand);font-weight:700}
+
+/* Spend ruler: the signature element */
+.ruler{position:relative;height:10px;background:#eceaf2;border-radius:5px;overflow:visible}
+.ruler .fill{position:absolute;top:0;bottom:0;left:0;border-radius:5px}
+.ruler .f-quote{background:var(--quote)}
+.ruler .f-invoice{background:var(--invoice)}
+.ruler .f-paid{background:var(--paid)}
+.ruler.over .f-quote{background:#e8b7b5}
+.ruler .budget-mark{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin:8px 0 0;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+
+/* Project rows */
+.plist{display:flex;flex-direction:column;background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.prow{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,2fr) auto;gap:20px;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line);cursor:pointer;text-align:left;background:none;border-left:0;border-right:0;border-top:0;width:100%}
+.prow:last-child{border-bottom:0}
+.prow:hover{background:#faf9fd}
+.prow .pname{font-weight:700;font-size:16px}
+.prow .psub{font-size:13px;color:var(--muted)}
+.prow .pnums{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;margin-top:6px}
+.prow .pfig{text-align:right;min-width:110px}
+.prow .pfig strong{font-size:17px;display:block}
+.prow .pfig small{font-size:12px;color:var(--muted)}
+.badge{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--brand-soft);color:var(--brand);font-weight:500;margin-left:6px;vertical-align:2px}
+.badge.closed{background:#eceaf0;color:var(--muted)}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+.empty .btn{margin-top:12px}
+
+/* Detail */
+.crumb{margin-bottom:10px}
+.dhead{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.dhead .t{flex:1;min-width:200px}
+.dhead h2{font-size:24px;margin:0}
+.dhead .sub{color:var(--muted);font-size:14px}
+.dhead .acts{display:flex;gap:8px;flex-wrap:wrap}
+.dsum{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;margin-bottom:24px}
+.dsum .figs{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+.dsum .figs span{display:block;font-size:13px;color:var(--muted)}
+.dsum .figs strong{font-size:20px}
+.dsum .ruler{height:14px;border-radius:7px}
+.dsum .ruler .fill{border-radius:7px}
+.neg{color:var(--over)}
+.pos{color:var(--ok)}
+h3.sec{font-size:16px;margin:0 0 10px}
+.tbl-wrap{overflow-x:auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:28px}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:14px}
+th,td{padding:10px 14px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:13px;color:var(--muted);font-weight:500;background:#faf9fc}
+tr:last-child td{border-bottom:0}
+tr.total td{font-weight:700;background:#faf9fc}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;vertical-align:0}
+
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.filters select,.filters input{border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 10px;background:#fff}
+.filters input{flex:1;min-width:160px}
+.elist{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.erow{display:grid;grid-template-columns:92px minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+.erow:last-child{border-bottom:0}
+.erow .date{font-size:13px;color:var(--muted)}
+.erow .main{min-width:0}
+.erow .vendor{font-weight:700}
+.erow .desc{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.erow .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:3px}
+.tag{font-size:12px;padding:0 7px;border-radius:4px;border:1px solid var(--line);color:var(--muted)}
+.tag.trade{color:#fff;border:0}
+.tag.out{border-color:#2f6b4f;color:#2f6b4f}
+.st{font-size:12px;padding:1px 8px;border-radius:10px;font-weight:500}
+.st-報價{background:#f0edf8;color:#6b5f9e}
+.st-已請款{background:#e5e1f3;color:#4e4387}
+.st-已付款{background:var(--paid);color:#fff}
+.erow .amt{text-align:right}
+.erow .amt strong{display:block;font-size:16px}
+.erow .amt small{font-size:12px;color:var(--muted)}
+.erow .ops{display:flex;gap:2px}
+.erow .ops a{font-size:13px;color:var(--brand);padding:4px 6px;text-decoration:none}
+
+/* Modal */
+.modal{position:fixed;inset:0;background:rgba(38,35,58,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;z-index:20}
+.modal .box{background:var(--paper);border-radius:var(--r-lg);width:100%;max-width:560px;padding:24px}
+.modal h3{margin:0 0 18px;font-size:18px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:14px}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));gap:8px;margin-bottom:6px}
+.tgrid label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:2px}
+.tgrid input{border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
+.hint{font-size:12px;color:var(--muted);margin:0 0 14px}
+.mfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bottom:10px}
+
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:8px;font-size:14px;z-index:30;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.show{opacity:1}
+#toast.err{background:var(--over)}
+
+@media (max-width:720px){
+  main{padding:16px}
+  header.top{padding:12px 16px}
+  header.top .who{display:none}
+  .overview{grid-template-columns:1fr 1fr}
+  .prow{grid-template-columns:1fr;gap:10px}
+  .prow .pfig{text-align:left}
+  .dsum .figs{grid-template-columns:1fr 1fr}
+  .erow{grid-template-columns:1fr auto;gap:6px 12px}
+  .erow .date{grid-column:1/-1}
+  .erow .ops{grid-column:1/-1;justify-content:flex-end}
+  .row2{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<section id="loginView">
+  <form class="login-box" id="loginForm" autocomplete="on">
+    <h1>圖威成本統計</h1>
+    <p>登入後才能查看與編輯成本資料。</p>
+    <div id="setupWarn" class="setup-warn hidden">尚未設定 Firebase。請在程式碼中的 firebaseConfig 貼上 twowei-progresstrack 的設定值。</div>
+    <div class="field"><label for="lEmail">Email</label><input id="lEmail" type="email" autocomplete="username" required></div>
+    <div class="field"><label for="lPass">密碼</label><input id="lPass" type="password" autocomplete="current-password" required></div>
+    <button class="btn primary" type="submit" style="width:100%">登入</button>
+    <div class="msg err" id="loginMsg"></div>
+  </form>
+</section>
+
+<!-- App -->
+<section id="appView" class="hidden">
+  <header class="top">
+    <h1>圖威成本統計</h1>
+    <span class="who" id="whoAmI"></span>
+    <button class="btn sm" data-action="logout">登出</button>
+  </header>
+  <main id="main"></main>
+</section>
+
+<!-- Project modal -->
+<div class="modal hidden" id="projectModal" role="dialog" aria-modal="true" aria-labelledby="pmTitle">
+  <div class="box">
+    <h3 id="pmTitle">新增專案</h3>
+    <div class="field"><label for="pName">專案名稱</label><input id="pName" placeholder="例：嘉博-葉王展"></div>
+    <div class="row2">
+      <div class="field"><label for="pStatus">狀態</label><select id="pStatus"><option>進行中</option><option>已結案</option></select></div>
+      <div class="field"><label for="pBudget">總預算（含稅）</label><input id="pBudget" type="number" inputmode="numeric" min="0" placeholder="留空則使用分項合計"></div>
+    </div>
+    <div class="field"><label for="pNotice">對應工作通告（選填）</label><input id="pNotice" placeholder="通告名稱，方便對照排程"></div>
+    <details class="more" id="pTradeDetails">
+      <summary>依工種設定預算</summary>
+      <div class="tgrid" id="pTradeGrid"></div>
+      <p class="hint" id="pTradeSum">分項合計：0</p>
+    </details>
+    <div class="field"><label for="pNote">備註</label><textarea id="pNote"></textarea></div>
+    <div class="mfoot">
+      <button class="btn" data-action="close-modal" data-target="projectModal">取消</button>
+      <button class="btn primary" data-action="save-project">儲存專案</button>
+    </div>
+  </div>
+</div>
+
+<!-- Entry modal -->
+<div class="modal hidden" id="entryModal" role="dialog" aria-modal="true" aria-labelledby="emTitle">
+  <div class="box">
+    <h3 id="emTitle">新增成本項目</h3>
+    <div class="row2">
+      <div class="field"><label for="eDate">日期</label><input id="eDate" type="date"></div>
+      <div class="field"><label for="eTrade">工種</label><select id="eTrade"></select></div>
+    </div>
+    <div class="field"><label for="eVendor">廠商</label><input id="eVendor" list="vendorList" placeholder="例：XX木作"><datalist id="vendorList"></datalist></div>
+    <div class="field"><label for="eDesc">項目內容</label><input id="eDesc" placeholder="例：展櫃製作 ×6"></div>
+    <div class="row2">
+      <div class="field"><label for="eAmount">金額</label><input id="eAmount" type="number" inputmode="numeric" step="1"></div>
+      <div class="field"><label for="eTax">稅別</label><select id="eTax"><option value="exc">未稅（自動加 5%）</option><option value="inc">含稅</option></select></div>
+    </div>
+    <div class="field"><label for="eStatus">進度</label><select id="eStatus"><option>報價</option><option>已請款</option><option>已付款</option></select></div>
+    <label class="check"><input type="checkbox" id="eOut"> 外包施作</label>
+    <div class="field"><label for="eLink">相關檔案連結（報價單、發票）</label><input id="eLink" type="url" placeholder="https://drive.google.com/..."></div>
+    <div class="field"><label for="eNote">備註</label><textarea id="eNote"></textarea></div>
+    <div class="mfoot">
+      <button class="btn" data-action="close-modal" data-target="entryModal">取消</button>
+      <button class="btn primary" data-action="save-entry">儲存項目</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, addDoc, updateDoc, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ===== 1. 貼上 twowei-progresstrack 的 Firebase 設定（與其他系統相同） ===== */
+const firebaseConfig = {
+  apiKey: "AIzaSyD6t7woI7dDhIU-Ta9bQJyIUcdyNOHMkV8",
+  authDomain: "twowei-progresstrack.firebaseapp.com",
+  projectId: "twowei-progresstrack",
+  storageBucket: "twowei-progresstrack.firebasestorage.app",
+  messagingSenderId: "1016966707396",
+  appId: "1:1016966707396:web:1aeb01a954f8c261b7f191",
+  measurementId: "G-DDGZN048K6"
+};
+/* ===== 閒置多久自動登出（分鐘） ===== */
+const IDLE_MINUTES = 30;
+
+const TRADES = ['水電','圖威','文保','木工','油漆','大圖輸出','貼圖','美術','多媒體','清潔','燈光','文宣品','攝影','腳本企劃','展示設計','其他'];
+const TRADE_COLORS = ['#4f7fae','#6b5f9e','#a07a4f','#7d5f42','#b8725a','#3f8580','#b8698a','#94608a','#566aa8','#7b8789','#b8922f','#5f8f52','#4a5874','#8c74a8','#4f879f','#8a8790'];
+const tradeColor = t => TRADE_COLORS[Math.max(0, TRADES.indexOf(t))] || '#8a8790';
+
+const configured = firebaseConfig.apiKey && firebaseConfig.apiKey !== 'PASTE_HERE';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => Math.round(Number(n) || 0).toLocaleString('zh-TW');
+const taxed = e => e.taxIncluded ? (Number(e.amount) || 0) : Math.round((Number(e.amount) || 0) * 1.05);
+const safeLink = u => /^https:\/\/[^\s"'<>]+$/i.test(u || '') ? u : '';
+const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const ts = x => x?.toMillis?.() ?? Date.now();
+
+let projects = [], entries = [], unsubs = [];
+let view = 'list', currentProjectId = null, listFilter = '進行中';
+let editingProjectId = null, editingEntryId = null;
+let entryFilter = { trade: '', status: '', q: '' };
+
+function toast(msg, isErr = false) {
+  const t = $('#toast'); t.textContent = msg; t.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.className = '', 2400);
+}
+
+/* ===== Firebase ===== */
+let auth, db;
+if (!configured) {
+  $('#setupWarn').classList.remove('hidden');
+} else {
+  const app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+  await setPersistence(auth, browserSessionPersistence); // 關閉分頁即登出
+  onAuthStateChanged(auth, user => user ? enterApp(user) : leaveApp());
+}
+
+$('#loginForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  if (!configured) return;
+  const msg = $('#loginMsg'); msg.textContent = '';
+  try {
+    await signInWithEmailAndPassword(auth, $('#lEmail').value.trim(), $('#lPass').value);
+    $('#lPass').value = '';
+  } catch (err) {
+    const map = {
+      'auth/invalid-credential': 'Email 或密碼錯誤。',
+      'auth/invalid-email': 'Email 格式不正確。',
+      'auth/too-many-requests': '嘗試次數過多，帳號已暫時鎖定，請稍後再試。',
+      'auth/network-request-failed': '網路連線失敗，請確認網路後再試。'
+    };
+    msg.textContent = map[err.code] || '登入失敗：' + err.code;
+  }
+});
+
+function enterApp(user) {
+  $('#loginView').classList.add('hidden');
+  $('#appView').classList.remove('hidden');
+  $('#whoAmI').textContent = user.email;
+  unsubs.push(onSnapshot(collection(db, 'cost_projects'), snap => {
+    projects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+  }, handleErr));
+  unsubs.push(onSnapshot(collection(db, 'cost_entries'), snap => {
+    entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+  }, handleErr));
+  resetIdle();
+}
+
+function leaveApp() {
+  unsubs.forEach(u => u()); unsubs = [];
+  projects = []; entries = []; view = 'list'; currentProjectId = null;
+  $('#main').innerHTML = '';
+  document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+  $('#appView').classList.add('hidden');
+  $('#loginView').classList.remove('hidden');
+  clearTimeout(idleTimer);
+}
+
+function handleErr(err) {
+  console.error(err);
+  if (err?.code === 'permission-denied') {
+    signOut(auth);
+    $('#loginMsg').textContent = '此帳號沒有成本資料的存取權限。';
+  } else {
+    toast('操作失敗：' + (err?.code || err?.message || err), true);
+  }
+}
+
+/* 閒置自動登出 */
+let idleTimer;
+function resetIdle() {
+  clearTimeout(idleTimer);
+  if (!auth?.currentUser) return;
+  idleTimer = setTimeout(() => {
+    signOut(auth);
+    $('#loginMsg').textContent = `閒置超過 ${IDLE_MINUTES} 分鐘，已自動登出。`;
+  }, IDLE_MINUTES * 60000);
+}
+['click', 'keydown', 'touchstart', 'scroll'].forEach(ev => document.addEventListener(ev, resetIdle, { passive: true }));
+
+/* ===== 計算 ===== */
+function summarize(pid) {
+  const es = entries.filter(e => e.projectId === pid);
+  const s = { est: 0, inv: 0, paid: 0, byTrade: {}, count: es.length };
+  for (const e of es) {
+    const v = taxed(e);
+    const b = s.byTrade[e.trade] ||= { est: 0, inv: 0, paid: 0 };
+    s.est += v; b.est += v;
+    if (e.status !== '報價') { s.inv += v; b.inv += v; }
+    if (e.status === '已付款') { s.paid += v; b.paid += v; }
+  }
+  return s;
+}
+
+function rulerHTML(budget, s) {
+  const max = Math.max(budget, s.est, 1);
+  const pct = v => (v / max * 100).toFixed(2) + '%';
+  const over = budget > 0 && s.est > budget;
+  return `<div class="ruler${over ? ' over' : ''}" title="預算 ${fmt(budget)}／預估 ${fmt(s.est)}">
+    <div class="fill f-quote" style="width:${pct(s.est)}"></div>
+    <div class="fill f-invoice" style="width:${pct(s.inv)}"></div>
+    <div class="fill f-paid" style="width:${pct(s.paid)}"></div>
+    ${budget > 0 ? `<div class="budget-mark" style="left:calc(${pct(budget)} - 1px)"></div>` : ''}
+  </div>`;
+}
+const legendHTML = `<div class="legend"><span><i style="background:var(--paid)"></i>已付款</span><span><i style="background:var(--invoice)"></i>已請款</span><span><i style="background:var(--quote)"></i>報價</span><span><i style="background:var(--ink);width:2px"></i>預算線</span></div>`;
+
+/* ===== 畫面 ===== */
+function render() { view === 'detail' ? renderDetail() : renderList(); }
+
+function renderList() {
+  const active = projects.filter(p => p.status !== '已結案');
+  let tb = 0, te = 0, tp = 0;
+  active.forEach(p => { const s = summarize(p.id); tb += Number(p.budget) || 0; te += s.est; tp += s.paid; });
+  const shown = projects
+    .filter(p => listFilter === '全部' || (listFilter === '已結案' ? p.status === '已結案' : p.status !== '已結案'))
+    .sort((a, b) => ts(b.createdAt) - ts(a.createdAt));
+
+  const rows = shown.map(p => {
+    const s = summarize(p.id), budget = Number(p.budget) || 0, diff = budget - s.est;
+    return `<button class="prow" data-action="open-project" data-id="${esc(p.id)}">
+      <div>
+        <div class="pname">${esc(p.name)}<span class="badge${p.status === '已結案' ? ' closed' : ''}">${esc(p.status || '進行中')}</span></div>
+        <div class="psub">${s.count} 筆項目${p.noticeRef ? '｜通告：' + esc(p.noticeRef) : ''}</div>
+      </div>
+      <div>
+        ${rulerHTML(budget, s)}
+        <div class="pnums num"><span>已付 ${fmt(s.paid)}</span><span>預估 ${fmt(s.est)} / 預算 ${budget ? fmt(budget) : '未設定'}</span></div>
+      </div>
+      <div class="pfig num">
+        ${budget ? `<strong class="${diff < 0 ? 'neg' : 'pos'}">${diff < 0 ? '超支 ' : ''}${fmt(Math.abs(diff))}</strong><small>${diff < 0 ? '超出預算' : '預算餘額'}</small>` : `<strong>${fmt(s.est)}</strong><small>預估成本</small>`}
+      </div>
+    </button>`;
+  }).join('');
+
+  $('#main').innerHTML = `
+    <div class="overview num">
+      <div><span>進行中專案</span><strong>${active.length}</strong></div>
+      <div><span>進行中總預算</span><strong>${fmt(tb)}</strong></div>
+      <div><span>進行中預估成本</span><strong class="${te > tb && tb > 0 ? 'neg' : ''}">${fmt(te)}</strong></div>
+      <div><span>進行中已付款</span><strong>${fmt(tp)}</strong></div>
+    </div>
+    <div class="bar-head">
+      <h2>專案</h2>
+      <div class="seg">${['進行中', '已結案', '全部'].map(f => `<button data-action="list-filter" data-f="${f}" class="${f === listFilter ? 'on' : ''}">${f}</button>`).join('')}</div>
+      <button class="btn primary" data-action="new-project">新增專案</button>
+    </div>
+    <div class="plist">${rows || `<div class="empty">${projects.length ? '這個分類沒有專案。' : '還沒有任何專案。建立第一個專案，開始記錄成本。'}${projects.length ? '' : '<br><button class="btn primary" data-action="new-project">新增專案</button>'}</div>`}</div>
+    ${shown.length ? legendHTML : ''}`;
+}
+
+function renderDetail() {
+  const p = projects.find(x => x.id === currentProjectId);
+  if (!p) { view = 'list'; renderList(); return; }
+  const s = summarize(p.id), budget = Number(p.budget) || 0, bt = p.budgetByTrade || {};
+  const remain = budget - s.est;
+  const tradesUsed = TRADES.filter(t => bt[t] || s.byTrade[t]);
+  Object.keys(s.byTrade).forEach(t => { if (!tradesUsed.includes(t)) tradesUsed.push(t); });
+
+  const tradeRows = tradesUsed.map(t => {
+    const b = Number(bt[t]) || 0, x = s.byTrade[t] || { est: 0, inv: 0, paid: 0 }, d = b - x.est;
+    return `<tr><td><span class="dot" style="background:${tradeColor(t)}"></span>${esc(t)}</td>
+      <td>${b ? fmt(b) : '—'}</td><td>${fmt(x.est)}</td><td>${fmt(x.inv)}</td><td>${fmt(x.paid)}</td>
+      <td class="${b && d < 0 ? 'neg' : ''}">${b ? fmt(d) : '—'}</td></tr>`;
+  }).join('');
+  const sumBt = Object.values(bt).reduce((a, v) => a + (Number(v) || 0), 0);
+
+  $('#main').innerHTML = `
+    <div class="crumb"><button class="btn ghost sm" data-action="back">← 回到專案列表</button></div>
+    <div class="dhead">
+      <div class="t"><h2>${esc(p.name)}<span class="badge${p.status === '已結案' ? ' closed' : ''}">${esc(p.status || '進行中')}</span></h2>
+        <div class="sub">${p.noticeRef ? '對應通告：' + esc(p.noticeRef) : ''}${p.note ? (p.noticeRef ? '｜' : '') + esc(p.note) : ''}</div></div>
+      <div class="acts">
+        <button class="btn" data-action="edit-project">編輯專案</button>
+        <button class="btn danger" data-action="delete-project">刪除</button>
+        <button class="btn primary" data-action="new-entry">新增成本項目</button>
+      </div>
+    </div>
+    <div class="dsum">
+      <div class="figs num">
+        <div><span>預算</span><strong>${budget ? fmt(budget) : '未設定'}</strong></div>
+        <div><span>預估成本</span><strong>${fmt(s.est)}</strong></div>
+        <div><span>已請款</span><strong>${fmt(s.inv)}</strong></div>
+        <div><span>已付款</span><strong>${fmt(s.paid)}</strong></div>
+        <div><span>${remain < 0 ? '超出預算' : '預算餘額'}</span><strong class="${budget ? (remain < 0 ? 'neg' : 'pos') : ''}">${budget ? fmt(Math.abs(remain)) : '—'}</strong></div>
+      </div>
+      ${rulerHTML(budget, s)}
+      ${legendHTML}
+    </div>
+    ${tradesUsed.length ? `<h3 class="sec">工種分析（含稅）</h3>
+    <div class="tbl-wrap"><table class="num">
+      <thead><tr><th>工種</th><th>預算</th><th>預估</th><th>已請款</th><th>已付款</th><th>預算 − 預估</th></tr></thead>
+      <tbody>${tradeRows}
+      <tr class="total"><td>合計</td><td>${sumBt ? fmt(sumBt) : '—'}</td><td>${fmt(s.est)}</td><td>${fmt(s.inv)}</td><td>${fmt(s.paid)}</td><td>${sumBt ? fmt(sumBt - s.est) : '—'}</td></tr>
+      </tbody></table></div>` : ''}
+    <h3 class="sec">成本項目</h3>
+    <div class="filters">
+      <select id="fTrade" aria-label="工種篩選"><option value="">全部工種</option>${TRADES.map(t => `<option ${entryFilter.trade === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <select id="fStatus" aria-label="進度篩選"><option value="">全部進度</option>${['報價', '已請款', '已付款'].map(t => `<option ${entryFilter.status === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <input id="fQ" placeholder="搜尋廠商或內容" value="${esc(entryFilter.q)}">
+    </div>
+    <div class="elist" id="elist"></div>`;
+
+  $('#fTrade').onchange = e => { entryFilter.trade = e.target.value; renderEntries(); };
+  $('#fStatus').onchange = e => { entryFilter.status = e.target.value; renderEntries(); };
+  $('#fQ').oninput = e => { entryFilter.q = e.target.value; renderEntries(); };
+  renderEntries();
+}
+
+function renderEntries() {
+  const q = entryFilter.q.trim().toLowerCase();
+  const list = entries
+    .filter(e => e.projectId === currentProjectId)
+    .filter(e => !entryFilter.trade || e.trade === entryFilter.trade)
+    .filter(e => !entryFilter.status || e.status === entryFilter.status)
+    .filter(e => !q || (e.vendor || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || ts(b.createdAt) - ts(a.createdAt));
+  const total = list.reduce((a, e) => a + taxed(e), 0);
+
+  $('#elist').innerHTML = list.length ? list.map(e => {
+    const link = safeLink(e.fileLink);
+    return `<div class="erow">
+      <div class="date num">${esc(e.date || '')}</div>
+      <div class="main">
+        <div class="vendor">${esc(e.vendor || '（未填廠商）')}</div>
+        ${e.description ? `<div class="desc" title="${esc(e.description)}">${esc(e.description)}</div>` : ''}
+        <div class="tags">
+          <span class="tag trade" style="background:${tradeColor(e.trade)}">${esc(e.trade)}</span>
+          <span class="st st-${esc(e.status)}">${esc(e.status)}</span>
+          ${e.isOutsource ? '<span class="tag out">外包</span>' : ''}
+        </div>
+      </div>
+      <div class="amt num"><strong>${fmt(taxed(e))}</strong><small>${e.taxIncluded ? '含稅' : '未稅 ' + fmt(e.amount)}</small></div>
+      <div class="ops">
+        ${link ? `<a href="${esc(link)}" target="_blank" rel="noopener noreferrer">檔案</a>` : ''}
+        <button class="btn ghost sm" data-action="edit-entry" data-id="${esc(e.id)}">編輯</button>
+        <button class="btn ghost sm" data-action="delete-entry" data-id="${esc(e.id)}">刪除</button>
+      </div>
+    </div>`;
+  }).join('') + `<div class="erow" style="background:#faf9fc"><div></div><div class="main"><strong>篩選結果 ${list.length} 筆</strong></div><div class="amt num"><strong>${fmt(total)}</strong><small>含稅合計</small></div><div></div></div>`
+    : `<div class="empty">${entries.some(e => e.projectId === currentProjectId) ? '沒有符合篩選條件的項目。' : '這個專案還沒有成本項目。<br><button class="btn primary" data-action="new-entry">新增成本項目</button>'}</div>`;
+}
+
+/* ===== 專案表單 ===== */
+$('#pTradeGrid').innerHTML = TRADES.map(t => `<label>${t}<input type="number" min="0" inputmode="numeric" data-trade="${t}"></label>`).join('');
+$('#pTradeGrid').addEventListener('input', updateTradeSum);
+function updateTradeSum() {
+  let sum = 0; document.querySelectorAll('#pTradeGrid input').forEach(i => sum += Number(i.value) || 0);
+  $('#pTradeSum').textContent = '分項合計：' + fmt(sum);
+}
+
+function openProjectModal(p) {
+  editingProjectId = p?.id || null;
+  $('#pmTitle').textContent = p ? '編輯專案' : '新增專案';
+  $('#pName').value = p?.name || '';
+  $('#pStatus').value = p?.status || '進行中';
+  $('#pBudget').value = p?.budget || '';
+  $('#pNotice').value = p?.noticeRef || '';
+  $('#pNote').value = p?.note || '';
+  const bt = p?.budgetByTrade || {};
+  document.querySelectorAll('#pTradeGrid input').forEach(i => i.value = bt[i.dataset.trade] || '');
+  $('#pTradeDetails').open = Object.keys(bt).length > 0;
+  updateTradeSum();
+  $('#projectModal').classList.remove('hidden');
+  $('#pName').focus();
+}
+
+async function saveProject() {
+  const name = $('#pName').value.trim();
+  if (!name) return toast('請輸入專案名稱', true);
+  const byTrade = {};
+  document.querySelectorAll('#pTradeGrid input').forEach(i => { const v = Number(i.value); if (v > 0) byTrade[i.dataset.trade] = v; });
+  let budget = Number($('#pBudget').value) || 0;
+  if (!budget) budget = Object.values(byTrade).reduce((a, b) => a + b, 0);
+  const data = { name, status: $('#pStatus').value, budget, budgetByTrade: byTrade,
+    noticeRef: $('#pNotice').value.trim(), note: $('#pNote').value.trim(), updatedAt: serverTimestamp() };
+  try {
+    if (editingProjectId) await updateDoc(doc(db, 'cost_projects', editingProjectId), data);
+    else { data.createdAt = serverTimestamp(); await addDoc(collection(db, 'cost_projects'), data); }
+    $('#projectModal').classList.add('hidden');
+    toast('專案已儲存');
+  } catch (err) { handleErr(err); }
+}
+
+async function deleteProject() {
+  const p = projects.find(x => x.id === currentProjectId); if (!p) return;
+  const its = entries.filter(e => e.projectId === p.id);
+  if (!confirm(`確定刪除「${p.name}」？\n其中 ${its.length} 筆成本項目也會一併刪除，且無法復原。`)) return;
+  try {
+    const batch = writeBatch(db);
+    its.forEach(e => batch.delete(doc(db, 'cost_entries', e.id)));
+    batch.delete(doc(db, 'cost_projects', p.id));
+    await batch.commit();
+    view = 'list'; currentProjectId = null; render();
+    toast('專案已刪除');
+  } catch (err) { handleErr(err); }
+}
+
+/* ===== 成本項目表單 ===== */
+$('#eTrade').innerHTML = TRADES.map(t => `<option>${t}</option>`).join('');
+
+function openEntryModal(e) {
+  editingEntryId = e?.id || null;
+  $('#emTitle').textContent = e ? '編輯成本項目' : '新增成本項目';
+  $('#eDate').value = e?.date || today();
+  $('#eTrade').value = e?.trade || entryFilter.trade || TRADES[0];
+  $('#eVendor').value = e?.vendor || '';
+  $('#eDesc').value = e?.description || '';
+  $('#eAmount').value = e?.amount ?? '';
+  $('#eTax').value = e ? (e.taxIncluded ? 'inc' : 'exc') : 'exc';
+  $('#eStatus').value = e?.status || '報價';
+  $('#eOut').checked = !!e?.isOutsource;
+  $('#eLink').value = e?.fileLink || '';
+  $('#eNote').value = e?.note || '';
+  const vendors = [...new Set(entries.map(x => x.vendor).filter(Boolean))].sort();
+  $('#vendorList').innerHTML = vendors.map(v => `<option value="${esc(v)}">`).join('');
+  $('#entryModal').classList.remove('hidden');
+  $('#eVendor').focus();
+}
+
+async function saveEntry() {
+  const raw = $('#eAmount').value.trim();
+  const amount = Number(raw);
+  if (raw === '' || !Number.isFinite(amount)) return toast('請輸入金額', true);
+  const link = $('#eLink').value.trim();
+  if (link && !safeLink(link)) return toast('檔案連結必須以 https:// 開頭', true);
+  const data = {
+    projectId: currentProjectId, date: $('#eDate').value || today(), trade: $('#eTrade').value,
+    vendor: $('#eVendor').value.trim(), description: $('#eDesc').value.trim(), amount,
+    taxIncluded: $('#eTax').value === 'inc', status: $('#eStatus').value, isOutsource: $('#eOut').checked,
+    fileLink: link, note: $('#eNote').value.trim(), updatedAt: serverTimestamp()
+  };
+  try {
+    if (editingEntryId) await updateDoc(doc(db, 'cost_entries', editingEntryId), data);
+    else { data.createdAt = serverTimestamp(); await addDoc(collection(db, 'cost_entries'), data); }
+    $('#entryModal').classList.add('hidden');
+    toast('項目已儲存');
+  } catch (err) { handleErr(err); }
+}
+
+async function deleteEntry(id) {
+  const e = entries.find(x => x.id === id); if (!e) return;
+  if (!confirm(`確定刪除「${e.vendor || ''} ${e.description || ''}」（${fmt(taxed(e))}）？`)) return;
+  try {
+    const batch = writeBatch(db); batch.delete(doc(db, 'cost_entries', id)); await batch.commit();
+    toast('項目已刪除');
+  } catch (err) { handleErr(err); }
+}
+
+/* ===== 事件 ===== */
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-action]'); if (!b) return;
+  const a = b.dataset.action;
+  if (a === 'logout') { signOut(auth); return; }
+  if (a === 'list-filter') { listFilter = b.dataset.f; renderList(); }
+  if (a === 'new-project') openProjectModal(null);
+  if (a === 'open-project') { currentProjectId = b.dataset.id; view = 'detail'; entryFilter = { trade: '', status: '', q: '' }; renderDetail(); window.scrollTo(0, 0); }
+  if (a === 'back') { view = 'list'; currentProjectId = null; renderList(); }
+  if (a === 'edit-project') openProjectModal(projects.find(x => x.id === currentProjectId));
+  if (a === 'delete-project') deleteProject();
+  if (a === 'save-project') saveProject();
+  if (a === 'new-entry') openEntryModal(null);
+  if (a === 'edit-entry') openEntryModal(entries.find(x => x.id === b.dataset.id));
+  if (a === 'delete-entry') deleteEntry(b.dataset.id);
+  if (a === 'save-entry') saveEntry();
+  if (a === 'close-modal') $('#' + b.dataset.target).classList.add('hidden');
+});
+/* 視窗刻意不因點擊背景或 ESC 關閉（避免中文輸入法衝突），與其他系統一致 */
+</script>
+</body>
+</html>
