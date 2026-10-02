@@ -160,6 +160,32 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
 #toast.show{opacity:1}
 #toast.err{background:var(--over)}
 
+
+/* Notice linkage */
+.link-sum{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.chip{border:1px solid var(--line);background:var(--paper);border-radius:16px;padding:4px 12px;font-size:13px;color:var(--muted)}
+.chip.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand);font-weight:700}
+.chip.warn b{color:#b26a00}
+.chip.chg b{color:var(--over)}
+.slist{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;margin-bottom:28px}
+.sgroup-h{display:flex;align-items:center;gap:8px;padding:9px 16px;background:#faf9fc;border-bottom:1px solid var(--line);font-weight:700;font-size:14px}
+.sgroup-h small{font-weight:400;color:var(--muted);font-size:12px}
+.srow{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:14px;padding:12px 16px;border-bottom:1px solid var(--line);border-left:3px solid transparent}
+.srow.missing{border-left-color:#e0a030;background:#fffcf5}
+.srow.ignored{opacity:.55}
+.srow .sdate{font-size:13px;color:var(--muted)}
+.srow .sdesc{font-size:14px}
+.srow .smeta{font-size:12px;color:var(--muted);margin-top:2px}
+.srow .need{font-size:12px;color:#b26a00;margin-top:4px}
+.srow .sacts{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.echips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.echip{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 8px;font-size:12px;display:inline-flex;gap:6px;align-items:center}
+.echip:hover{border-color:var(--brand)}
+.chg{margin-top:6px;font-size:12px;background:#fdf0ef;border:1px solid #f2cfcc;color:#8a3431;border-radius:6px;padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chg span{flex:1;min-width:160px}
+.tag.chgtag{border-color:#e5a9a6;color:var(--over)}
+.tag.linked{border-color:var(--invoice);color:var(--paid)}
+
 @media (max-width:720px){
   main{padding:16px}
   header.top{padding:12px 16px}
@@ -172,6 +198,8 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
   .erow .date{grid-column:1/-1}
   .erow .ops{grid-column:1/-1;justify-content:flex-end}
   .row2{grid-template-columns:1fr}
+  .srow{grid-template-columns:1fr;gap:6px}
+  .srow .sacts{flex-direction:row;justify-content:flex-end}
 }
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
 </style>
@@ -210,7 +238,8 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
       <div class="field"><label for="pStatus">狀態</label><select id="pStatus"><option>進行中</option><option>已結案</option></select></div>
       <div class="field"><label for="pBudget">總預算（含稅）</label><input id="pBudget" type="number" inputmode="numeric" min="0" placeholder="留空則使用分項合計"></div>
     </div>
-    <div class="field"><label for="pNotice">對應工作通告（選填）</label><input id="pNotice" placeholder="通告名稱，方便對照排程"></div>
+    <div class="field"><label for="pNoticeId">對應工作通告</label><select id="pNoticeId"></select></div>
+    <p class="hint">連結後，通告中的工作項目會自動帶入對照，通告有新增或修改時也會同步顯示。</p>
     <details class="more" id="pTradeDetails">
       <summary>依工種設定預算</summary>
       <div class="tgrid" id="pTradeGrid"></div>
@@ -228,6 +257,7 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
 <div class="modal hidden" id="entryModal" role="dialog" aria-modal="true" aria-labelledby="emTitle">
   <div class="box">
     <h3 id="emTitle">新增成本項目</h3>
+    <div class="field" id="eSlotField"><label for="eSlot">對應通告工項</label><select id="eSlot"></select></div>
     <div class="row2">
       <div class="field"><label for="eDate">日期</label><input id="eDate" type="date"></div>
       <div class="field"><label for="eTrade">工種</label><select id="eTrade"></select></div>
@@ -254,9 +284,8 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, doc, addDoc, updateDoc, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, doc, addDoc, updateDoc, onSnapshot, serverTimestamp, writeBatch, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* ===== 1. 貼上 twowei-progresstrack 的 Firebase 設定（與其他系統相同） ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyD6t7woI7dDhIU-Ta9bQJyIUcdyNOHMkV8",
   authDomain: "twowei-progresstrack.firebaseapp.com",
@@ -266,14 +295,22 @@ const firebaseConfig = {
   appId: "1:1016966707396:web:1aeb01a954f8c261b7f191",
   measurementId: "G-DDGZN048K6"
 };
-/* ===== 閒置多久自動登出（分鐘） ===== */
+/* 閒置多久自動登出（分鐘） */
 const IDLE_MINUTES = 30;
+/* 通告系統的資料位置（只讀取，不會修改通告） */
+const NOTICES_COLLECTION = 'construction_notices';
+const APP_CONFIG_PATH = ['app_config', 'global'];
 
-const TRADES = ['水電','圖威','文保','木工','油漆','大圖輸出','貼圖','美術','多媒體','清潔','燈光','文宣品','攝影','腳本企劃','展示設計','其他'];
-const TRADE_COLORS = ['#4f7fae','#6b5f9e','#a07a4f','#7d5f42','#b8725a','#3f8580','#b8698a','#94608a','#566aa8','#7b8789','#b8922f','#5f8f52','#4a5874','#8c74a8','#4f879f','#8a8790'];
-const tradeColor = t => TRADE_COLORS[Math.max(0, TRADES.indexOf(t))] || '#8a8790';
+/* 工項清單：優先使用通告系統「工項管理」的設定，讀不到才用這份預設 */
+const DEFAULT_TYPES = [
+  ['水電','#1AADCE'],['圖威','#E07B2A'],['文保','#EC9A9A'],['木工','#7B5E3A'],['油漆','#8E24AA'],
+  ['大圖輸出','#0277BD'],['貼圖','#00897B'],['美術','#F4511E'],['多媒體','#3949AB'],['清潔','#558B2F'],
+  ['燈光','#F9A825'],['文宣品','#D81B60'],['攝影','#C62828'],['腳本企劃','#9E9D24'],['展示設計','#6A4C93'],['其他','#4A7C6F']
+].map(([name, color]) => ({ name, color }));
+let tradeTypes = DEFAULT_TYPES;
+const tradeNames = () => tradeTypes.map(t => t.name);
+const tradeColor = n => tradeTypes.find(t => t.name === n)?.color || '#8a8790';
 
-const configured = firebaseConfig.apiKey && firebaseConfig.apiKey !== 'PASTE_HERE';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = n => Math.round(Number(n) || 0).toLocaleString('zh-TW');
@@ -281,9 +318,19 @@ const taxed = e => e.taxIncluded ? (Number(e.amount) || 0) : Math.round((Number(
 const safeLink = u => /^https:\/\/[^\s"'<>]+$/i.test(u || '') ? u : '';
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const ts = x => x?.toMillis?.() ?? Date.now();
+const md = d => d ? d.slice(5).replace('-', '/') : '';
+const range = s => s.endDate && s.endDate !== s.date ? `${md(s.date)}–${md(s.endDate)}` : md(s.date);
+const plainCache = new Map();
+function plain(html) {
+  if (!html) return '';
+  if (plainCache.has(html)) return plainCache.get(html);
+  const t = (new DOMParser().parseFromString(String(html), 'text/html').body.textContent || '').replace(/\s+/g, ' ').trim();
+  plainCache.set(html, t); return t;
+}
+const snapOf = s => ({ type: s.type || '', date: s.date || '', endDate: s.endDate || '', desc: plain(s.desc).slice(0, 300) });
 
-let projects = [], entries = [], unsubs = [];
-let view = 'list', currentProjectId = null, listFilter = '進行中';
+let projects = [], entries = [], notices = new Map(), unsubs = [];
+let view = 'list', currentProjectId = null, listFilter = '進行中', slotFilter = 'all';
 let editingProjectId = null, editingEntryId = null;
 let entryFilter = { trade: '', status: '', q: '' };
 
@@ -293,20 +340,14 @@ function toast(msg, isErr = false) {
 }
 
 /* ===== Firebase ===== */
-let auth, db;
-if (!configured) {
-  $('#setupWarn').classList.remove('hidden');
-} else {
-  const app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-  await setPersistence(auth, browserSessionPersistence); // 關閉分頁即登出
-  onAuthStateChanged(auth, user => user ? enterApp(user) : leaveApp());
-}
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+await setPersistence(auth, browserSessionPersistence); // 關閉分頁即登出
+onAuthStateChanged(auth, user => user ? enterApp(user) : leaveApp());
 
 $('#loginForm').addEventListener('submit', async ev => {
   ev.preventDefault();
-  if (!configured) return;
   const msg = $('#loginMsg'); msg.textContent = '';
   try {
     await signInWithEmailAndPassword(auth, $('#lEmail').value.trim(), $('#lPass').value);
@@ -327,19 +368,24 @@ function enterApp(user) {
   $('#appView').classList.remove('hidden');
   $('#whoAmI').textContent = user.email;
   unsubs.push(onSnapshot(collection(db, 'cost_projects'), snap => {
-    projects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    render();
+    projects = snap.docs.map(d => ({ id: d.id, ...d.data() })); render();
   }, handleErr));
   unsubs.push(onSnapshot(collection(db, 'cost_entries'), snap => {
-    entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    render();
+    entries = snap.docs.map(d => ({ id: d.id, ...d.data() })); render();
   }, handleErr));
+  unsubs.push(onSnapshot(collection(db, NOTICES_COLLECTION), snap => {
+    notices = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }])); render();
+  }, err => { console.error(err); toast('讀取工作通告失敗', true); }));
+  unsubs.push(onSnapshot(doc(db, ...APP_CONFIG_PATH), snap => {
+    const list = snap.data()?.allTypes;
+    if (Array.isArray(list) && list.length) { tradeTypes = list.map(t => ({ name: t.name, color: t.color || '#8a8790' })); render(); }
+  }, err => console.error(err)));
   resetIdle();
 }
 
 function leaveApp() {
   unsubs.forEach(u => u()); unsubs = [];
-  projects = []; entries = []; view = 'list'; currentProjectId = null;
+  projects = []; entries = []; notices = new Map(); view = 'list'; currentProjectId = null;
   $('#main').innerHTML = '';
   document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
   $('#appView').classList.add('hidden');
@@ -357,11 +403,10 @@ function handleErr(err) {
   }
 }
 
-/* 閒置自動登出 */
 let idleTimer;
 function resetIdle() {
   clearTimeout(idleTimer);
-  if (!auth?.currentUser) return;
+  if (!auth.currentUser) return;
   idleTimer = setTimeout(() => {
     signOut(auth);
     $('#loginMsg').textContent = `閒置超過 ${IDLE_MINUTES} 分鐘，已自動登出。`;
@@ -383,6 +428,36 @@ function summarize(pid) {
   return s;
 }
 
+function slotChanges(e, s) {
+  if (!e.slotSnap || !s) return [];
+  const now = snapOf(s), was = e.slotSnap, ch = [];
+  if (was.type !== now.type) ch.push(`工種 ${was.type} → ${now.type}`);
+  if (was.date !== now.date || (was.endDate || '') !== now.endDate) ch.push(`日期 ${range(was)} → ${range(now)}`);
+  if (was.desc !== now.desc) ch.push('工作內容已修改');
+  return ch;
+}
+
+/* 專案與通告的對照狀態 */
+function linkage(p) {
+  const n = p?.noticeId ? notices.get(p.noticeId) : null;
+  if (!n) return null;
+  const slots = (Array.isArray(n.data) ? n.data : []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.order ?? 0) - (b.order ?? 0));
+  const es = entries.filter(e => e.projectId === p.id);
+  const bySlot = {};
+  es.forEach(e => { if (e.slotId != null) (bySlot[e.slotId] ||= []).push(e); });
+  const ignored = new Set(p.ignoredSlots || []);
+  const ids = new Set(slots.map(s => s.id));
+  let missing = 0; const changedEntries = [];
+  slots.forEach(s => {
+    const le = bySlot[s.id] || [];
+    if (!le.length && !ignored.has(s.id)) missing++;
+    le.forEach(e => { if (slotChanges(e, s).length) changedEntries.push(e); });
+  });
+  const orphans = es.filter(e => e.slotId != null && !ids.has(e.slotId));
+  return { n, slots, bySlot, ignored, missing, changedEntries, orphans, slotById: id => slots.find(s => s.id === id) };
+}
+const noticeTitle = n => n?.headerCfg?.title || '（未命名通告）';
+
 function rulerHTML(budget, s) {
   const max = Math.max(budget, s.est, 1);
   const pct = v => (v / max * 100).toFixed(2) + '%';
@@ -397,7 +472,14 @@ function rulerHTML(budget, s) {
 const legendHTML = `<div class="legend"><span><i style="background:var(--paid)"></i>已付款</span><span><i style="background:var(--invoice)"></i>已請款</span><span><i style="background:var(--quote)"></i>報價</span><span><i style="background:var(--ink);width:2px"></i>預算線</span></div>`;
 
 /* ===== 畫面 ===== */
-function render() { view === 'detail' ? renderDetail() : renderList(); }
+function render() {
+  const a = document.activeElement, id = a?.id, pos = a?.selectionStart;
+  view === 'detail' ? renderDetail() : renderList();
+  if (id && $('#main').contains(document.getElementById(id))) {
+    const el = document.getElementById(id); el.focus();
+    try { if (pos != null) el.setSelectionRange(pos, pos); } catch {}
+  }
+}
 
 function renderList() {
   const active = projects.filter(p => p.status !== '已結案');
@@ -408,11 +490,17 @@ function renderList() {
     .sort((a, b) => ts(b.createdAt) - ts(a.createdAt));
 
   const rows = shown.map(p => {
-    const s = summarize(p.id), budget = Number(p.budget) || 0, diff = budget - s.est;
+    const s = summarize(p.id), budget = Number(p.budget) || 0, diff = budget - s.est, L = linkage(p);
+    const sub = [`${s.count} 筆項目`];
+    if (L) {
+      sub.push('通告：' + esc(noticeTitle(L.n)));
+      if (L.missing) sub.push(`<b style="color:#b26a00">未建立成本 ${L.missing} 項</b>`);
+      if (L.changedEntries.length + L.orphans.length) sub.push(`<b style="color:var(--over)">通告異動 ${L.changedEntries.length + L.orphans.length} 筆</b>`);
+    } else if (p.noticeId) sub.push('<b style="color:var(--over)">對應通告已刪除</b>');
     return `<button class="prow" data-action="open-project" data-id="${esc(p.id)}">
       <div>
         <div class="pname">${esc(p.name)}<span class="badge${p.status === '已結案' ? ' closed' : ''}">${esc(p.status || '進行中')}</span></div>
-        <div class="psub">${s.count} 筆項目${p.noticeRef ? '｜通告：' + esc(p.noticeRef) : ''}</div>
+        <div class="psub">${sub.join('｜')}</div>
       </div>
       <div>
         ${rulerHTML(budget, s)}
@@ -436,17 +524,81 @@ function renderList() {
       <div class="seg">${['進行中', '已結案', '全部'].map(f => `<button data-action="list-filter" data-f="${f}" class="${f === listFilter ? 'on' : ''}">${f}</button>`).join('')}</div>
       <button class="btn primary" data-action="new-project">新增專案</button>
     </div>
-    <div class="plist">${rows || `<div class="empty">${projects.length ? '這個分類沒有專案。' : '還沒有任何專案。建立第一個專案，開始記錄成本。'}${projects.length ? '' : '<br><button class="btn primary" data-action="new-project">新增專案</button>'}</div>`}</div>
+    <div class="plist">${rows || `<div class="empty">${projects.length ? '這個分類沒有專案。' : '還沒有任何專案。選一張工作通告建立專案，工作項目會自動帶入。'}${projects.length ? '' : '<br><button class="btn primary" data-action="new-project">新增專案</button>'}</div>`}</div>
     ${shown.length ? legendHTML : ''}`;
+}
+
+function entryChip(e) {
+  return `<button class="echip" data-action="edit-entry" data-id="${esc(e.id)}"><span>${esc(e.vendor || '未填廠商')}</span><b class="num">${fmt(taxed(e))}</b><span class="st st-${esc(e.status)}">${esc(e.status)}</span></button>`;
+}
+
+function slotSectionHTML(p, L) {
+  const total = L.slots.length, linked = L.slots.filter(s => (L.bySlot[s.id] || []).length).length;
+  const chg = L.changedEntries.length + L.orphans.length;
+  const show = s => {
+    const le = L.bySlot[s.id] || [];
+    if (slotFilter === 'missing') return !le.length && !L.ignored.has(s.id);
+    if (slotFilter === 'changed') return le.some(e => slotChanges(e, s).length);
+    return true;
+  };
+  const order = tradeNames();
+  const groups = {};
+  L.slots.filter(show).forEach(s => (groups[s.type || '其他'] ||= []).push(s));
+  const gkeys = Object.keys(groups).sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
+
+  const rows = gkeys.map(t => {
+    const ss = groups[t];
+    const sub = ss.reduce((a, s) => a + (L.bySlot[s.id] || []).reduce((x, e) => x + taxed(e), 0), 0);
+    return `<div class="sgroup-h"><span class="dot" style="background:${tradeColor(t)}"></span>${esc(t)}<small>${ss.length} 項｜成本 ${fmt(sub)}</small></div>` +
+      ss.map(s => {
+        const le = L.bySlot[s.id] || [], ign = L.ignored.has(s.id), miss = !le.length && !ign;
+        const desc = plain(s.desc) || '（無工作內容）';
+        const changes = le.map(e => {
+          const c = slotChanges(e, s); if (!c.length) return '';
+          return `<div class="chg"><span>通告已異動（${esc(e.vendor || '未填廠商')}）：${esc(c.join('、'))}</span>
+            <button class="btn sm" data-action="apply-change" data-id="${esc(e.id)}">套用到成本</button>
+            <button class="btn ghost sm" data-action="ignore-change" data-id="${esc(e.id)}">保留原本</button></div>`;
+        }).join('');
+        return `<div class="srow${miss ? ' missing' : ''}${ign ? ' ignored' : ''}">
+          <div class="sdate num">${esc(range(s))}${s.start ? `<br>${esc(s.start)}${s.end ? '–' + esc(s.end) : ''}` : ''}</div>
+          <div>
+            <div class="sdesc">${esc(desc.length > 120 ? desc.slice(0, 120) + '…' : desc)}</div>
+            ${(s.assignees || []).length ? `<div class="smeta">負責：${esc(s.assignees.join('、'))}</div>` : ''}
+            ${le.length ? `<div class="echips">${le.map(entryChip).join('')}</div>` : ''}
+            ${miss ? '<div class="need">尚未建立成本</div>' : ''}${ign ? '<div class="smeta">已標記不計成本</div>' : ''}
+            ${changes}
+          </div>
+          <div class="sacts">
+            ${ign ? '' : `<button class="btn sm" data-action="entry-from-slot" data-slot="${esc(s.id)}">建立成本</button>`}
+            ${le.length ? '' : `<button class="btn ghost sm" data-action="toggle-ignore" data-slot="${esc(s.id)}">${ign ? '恢復計算' : '不計成本'}</button>`}
+          </div>
+        </div>`;
+      }).join('');
+  }).join('');
+
+  const orphanHTML = L.orphans.length && slotFilter !== 'missing' ? `<div class="sgroup-h"><span class="dot" style="background:var(--over)"></span>通告中已刪除的工項<small>${L.orphans.length} 筆成本</small></div>` +
+    L.orphans.map(e => `<div class="srow"><div class="sdate num">${esc(e.slotSnap ? range(e.slotSnap) : '')}</div>
+      <div><div class="sdesc">${esc(e.slotSnap?.desc || e.description || '')}</div><div class="echips">${entryChip(e)}</div>
+      <div class="chg"><span>這個工項已從通告刪除，請確認這筆成本是否還需要。</span></div></div>
+      <div class="sacts"><button class="btn sm" data-action="unlink-entry" data-id="${esc(e.id)}">保留並取消連結</button><button class="btn ghost sm" data-action="delete-entry" data-id="${esc(e.id)}">刪除成本</button></div></div>`).join('') : '';
+
+  return `<h3 class="sec">通告工項對照：${esc(noticeTitle(L.n))}</h3>
+    <div class="link-sum">
+      <button class="chip${slotFilter === 'all' ? ' on' : ''}" data-action="slot-filter" data-f="all">全部工項 <b class="num">${total}</b>（已建立 ${linked}）</button>
+      <button class="chip warn${slotFilter === 'missing' ? ' on' : ''}" data-action="slot-filter" data-f="missing">未建立成本 <b class="num">${L.missing}</b></button>
+      <button class="chip chg${slotFilter === 'changed' ? ' on' : ''}" data-action="slot-filter" data-f="changed">通告異動 <b class="num">${chg}</b></button>
+      ${L.changedEntries.length > 1 ? `<button class="btn sm" data-action="apply-all">全部套用異動</button>` : ''}
+    </div>
+    <div class="slist">${rows + orphanHTML || `<div class="empty">${total ? '沒有符合條件的工項。' : '這張通告還沒有工作項目。'}</div>`}</div>`;
 }
 
 function renderDetail() {
   const p = projects.find(x => x.id === currentProjectId);
   if (!p) { view = 'list'; renderList(); return; }
   const s = summarize(p.id), budget = Number(p.budget) || 0, bt = p.budgetByTrade || {};
-  const remain = budget - s.est;
-  const tradesUsed = TRADES.filter(t => bt[t] || s.byTrade[t]);
-  Object.keys(s.byTrade).forEach(t => { if (!tradesUsed.includes(t)) tradesUsed.push(t); });
+  const remain = budget - s.est, L = linkage(p);
+  const tradesUsed = tradeNames().filter(t => bt[t] || s.byTrade[t]);
+  [...Object.keys(bt), ...Object.keys(s.byTrade)].forEach(t => { if (!tradesUsed.includes(t)) tradesUsed.push(t); });
 
   const tradeRows = tradesUsed.map(t => {
     const b = Number(bt[t]) || 0, x = s.byTrade[t] || { est: 0, inv: 0, paid: 0 }, d = b - x.est;
@@ -455,12 +607,13 @@ function renderDetail() {
       <td class="${b && d < 0 ? 'neg' : ''}">${b ? fmt(d) : '—'}</td></tr>`;
   }).join('');
   const sumBt = Object.values(bt).reduce((a, v) => a + (Number(v) || 0), 0);
+  const noticeLine = L ? '對應通告：' + esc(noticeTitle(L.n)) : p.noticeId ? '<span class="neg">對應的通告已被刪除</span>' : p.noticeRef ? '對應通告：' + esc(p.noticeRef) : '未連結工作通告';
 
   $('#main').innerHTML = `
     <div class="crumb"><button class="btn ghost sm" data-action="back">← 回到專案列表</button></div>
     <div class="dhead">
       <div class="t"><h2>${esc(p.name)}<span class="badge${p.status === '已結案' ? ' closed' : ''}">${esc(p.status || '進行中')}</span></h2>
-        <div class="sub">${p.noticeRef ? '對應通告：' + esc(p.noticeRef) : ''}${p.note ? (p.noticeRef ? '｜' : '') + esc(p.note) : ''}</div></div>
+        <div class="sub">${noticeLine}${p.note ? '｜' + esc(p.note) : ''}</div></div>
       <div class="acts">
         <button class="btn" data-action="edit-project">編輯專案</button>
         <button class="btn danger" data-action="delete-project">刪除</button>
@@ -484,9 +637,10 @@ function renderDetail() {
       <tbody>${tradeRows}
       <tr class="total"><td>合計</td><td>${sumBt ? fmt(sumBt) : '—'}</td><td>${fmt(s.est)}</td><td>${fmt(s.inv)}</td><td>${fmt(s.paid)}</td><td>${sumBt ? fmt(sumBt - s.est) : '—'}</td></tr>
       </tbody></table></div>` : ''}
-    <h3 class="sec">成本項目</h3>
+    ${L ? slotSectionHTML(p, L) : ''}
+    <h3 class="sec">全部成本項目</h3>
     <div class="filters">
-      <select id="fTrade" aria-label="工種篩選"><option value="">全部工種</option>${TRADES.map(t => `<option ${entryFilter.trade === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <select id="fTrade" aria-label="工種篩選"><option value="">全部工種</option>${tradeNames().map(t => `<option ${entryFilter.trade === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
       <select id="fStatus" aria-label="進度篩選"><option value="">全部進度</option>${['報價', '已請款', '已付款'].map(t => `<option ${entryFilter.status === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <input id="fQ" placeholder="搜尋廠商或內容" value="${esc(entryFilter.q)}">
     </div>
@@ -499,6 +653,7 @@ function renderDetail() {
 }
 
 function renderEntries() {
+  const p = projects.find(x => x.id === currentProjectId), L = linkage(p);
   const q = entryFilter.q.trim().toLowerCase();
   const list = entries
     .filter(e => e.projectId === currentProjectId)
@@ -510,6 +665,12 @@ function renderEntries() {
 
   $('#elist').innerHTML = list.length ? list.map(e => {
     const link = safeLink(e.fileLink);
+    let linkTag = '';
+    if (L && e.slotId != null) {
+      const s = L.slotById(e.slotId);
+      linkTag = !s ? '<span class="tag chgtag">通告已刪除此工項</span>'
+        : slotChanges(e, s).length ? '<span class="tag chgtag">通告有異動</span>' : '<span class="tag linked">已對應通告</span>';
+    }
     return `<div class="erow">
       <div class="date num">${esc(e.date || '')}</div>
       <div class="main">
@@ -518,7 +679,7 @@ function renderEntries() {
         <div class="tags">
           <span class="tag trade" style="background:${tradeColor(e.trade)}">${esc(e.trade)}</span>
           <span class="st st-${esc(e.status)}">${esc(e.status)}</span>
-          ${e.isOutsource ? '<span class="tag out">外包</span>' : ''}
+          ${e.isOutsource ? '<span class="tag out">外包</span>' : ''}${linkTag}
         </div>
       </div>
       <div class="amt num"><strong>${fmt(taxed(e))}</strong><small>${e.taxIncluded ? '含稅' : '未稅 ' + fmt(e.amount)}</small></div>
@@ -533,7 +694,16 @@ function renderEntries() {
 }
 
 /* ===== 專案表單 ===== */
-$('#pTradeGrid').innerHTML = TRADES.map(t => `<label>${t}<input type="number" min="0" inputmode="numeric" data-trade="${t}"></label>`).join('');
+function fillNoticeSelect(selected) {
+  const list = [...notices.values()].sort((a, b) => (a.status === 'done') - (b.status === 'done') || ts(b.updatedAt) - ts(a.updatedAt));
+  const usedBy = new Map(projects.filter(p => p.noticeId && p.id !== editingProjectId).map(p => [p.noticeId, p.name]));
+  $('#pNoticeId').innerHTML = '<option value="">不連結通告</option>' + list.map(n =>
+    `<option value="${esc(n.id)}" ${n.id === selected ? 'selected' : ''}>${esc(noticeTitle(n))}${n.status === 'done' ? '（已結案）' : ''}${usedBy.has(n.id) ? '（已有成本專案）' : ''}</option>`).join('');
+}
+$('#pNoticeId').addEventListener('change', e => {
+  const n = notices.get(e.target.value);
+  if (n && !$('#pName').value.trim()) $('#pName').value = noticeTitle(n);
+});
 $('#pTradeGrid').addEventListener('input', updateTradeSum);
 function updateTradeSum() {
   let sum = 0; document.querySelectorAll('#pTradeGrid input').forEach(i => sum += Number(i.value) || 0);
@@ -546,10 +716,11 @@ function openProjectModal(p) {
   $('#pName').value = p?.name || '';
   $('#pStatus').value = p?.status || '進行中';
   $('#pBudget').value = p?.budget || '';
-  $('#pNotice').value = p?.noticeRef || '';
   $('#pNote').value = p?.note || '';
+  fillNoticeSelect(p?.noticeId || '');
   const bt = p?.budgetByTrade || {};
-  document.querySelectorAll('#pTradeGrid input').forEach(i => i.value = bt[i.dataset.trade] || '');
+  const names = tradeNames(); Object.keys(bt).forEach(t => { if (!names.includes(t)) names.push(t); });
+  $('#pTradeGrid').innerHTML = names.map(t => `<label>${esc(t)}<input type="number" min="0" inputmode="numeric" data-trade="${esc(t)}" value="${bt[t] || ''}"></label>`).join('');
   $('#pTradeDetails').open = Object.keys(bt).length > 0;
   updateTradeSum();
   $('#projectModal').classList.remove('hidden');
@@ -563,20 +734,25 @@ async function saveProject() {
   document.querySelectorAll('#pTradeGrid input').forEach(i => { const v = Number(i.value); if (v > 0) byTrade[i.dataset.trade] = v; });
   let budget = Number($('#pBudget').value) || 0;
   if (!budget) budget = Object.values(byTrade).reduce((a, b) => a + b, 0);
+  const nid = $('#pNoticeId').value, n = notices.get(nid);
   const data = { name, status: $('#pStatus').value, budget, budgetByTrade: byTrade,
-    noticeRef: $('#pNotice').value.trim(), note: $('#pNote').value.trim(), updatedAt: serverTimestamp() };
+    noticeId: nid || null, noticeRef: n ? noticeTitle(n) : '', note: $('#pNote').value.trim(), updatedAt: serverTimestamp() };
   try {
     if (editingProjectId) await updateDoc(doc(db, 'cost_projects', editingProjectId), data);
-    else { data.createdAt = serverTimestamp(); await addDoc(collection(db, 'cost_projects'), data); }
+    else {
+      data.createdAt = serverTimestamp(); data.ignoredSlots = [];
+      const ref = await addDoc(collection(db, 'cost_projects'), data);
+      currentProjectId = ref.id; view = 'detail'; slotFilter = 'all';
+    }
     $('#projectModal').classList.add('hidden');
-    toast('專案已儲存');
+    render(); toast('專案已儲存');
   } catch (err) { handleErr(err); }
 }
 
 async function deleteProject() {
   const p = projects.find(x => x.id === currentProjectId); if (!p) return;
   const its = entries.filter(e => e.projectId === p.id);
-  if (!confirm(`確定刪除「${p.name}」？\n其中 ${its.length} 筆成本項目也會一併刪除，且無法復原。`)) return;
+  if (!confirm(`確定刪除「${p.name}」？\n其中 ${its.length} 筆成本項目也會一併刪除，且無法復原。\n（工作通告本身不受影響）`)) return;
   try {
     const batch = writeBatch(db);
     its.forEach(e => batch.delete(doc(db, 'cost_entries', e.id)));
@@ -587,15 +763,48 @@ async function deleteProject() {
   } catch (err) { handleErr(err); }
 }
 
-/* ===== 成本項目表單 ===== */
-$('#eTrade').innerHTML = TRADES.map(t => `<option>${t}</option>`).join('');
+async function toggleIgnore(slotId) {
+  const p = projects.find(x => x.id === currentProjectId); if (!p) return;
+  const on = (p.ignoredSlots || []).includes(slotId);
+  try { await updateDoc(doc(db, 'cost_projects', p.id), { ignoredSlots: on ? arrayRemove(slotId) : arrayUnion(slotId) }); }
+  catch (err) { handleErr(err); }
+}
 
-function openEntryModal(e) {
+/* ===== 成本項目表單 ===== */
+let editingSlotSnap = null;
+function fillSlotSelect(L, selected) {
+  $('#eSlotField').classList.toggle('hidden', !L);
+  if (!L) { $('#eSlot').innerHTML = ''; return; }
+  $('#eSlot').innerHTML = '<option value="">不對應通告工項</option>' + L.slots.map(s => {
+    const d = plain(s.desc);
+    return `<option value="${esc(s.id)}" ${s.id === selected ? 'selected' : ''}>${esc(range(s))}｜${esc(s.type)}｜${esc(d.length > 30 ? d.slice(0, 30) + '…' : d)}</option>`;
+  }).join('');
+}
+function fillTradeSelect(sel) {
+  const names = tradeNames(); if (sel && !names.includes(sel)) names.push(sel);
+  $('#eTrade').innerHTML = names.map(t => `<option ${t === sel ? 'selected' : ''}>${esc(t)}</option>`).join('');
+}
+function applySlotToForm(s) {
+  fillTradeSelect(s.type);
+  $('#eDate').value = s.date || today();
+  if (!$('#eDesc').value.trim()) $('#eDesc').value = plain(s.desc).slice(0, 100);
+  $('#eVendor').placeholder = (s.assignees || []).length ? '負責：' + s.assignees.join('、') : '例：XX木作';
+}
+$('#eSlot').addEventListener('change', e => {
+  const L = linkage(projects.find(x => x.id === currentProjectId));
+  const s = L?.slotById(Number(e.target.value));
+  if (s && !editingEntryId) applySlotToForm(s);
+});
+
+function openEntryModal(e, slot) {
   editingEntryId = e?.id || null;
+  editingSlotSnap = e?.slotSnap || null;
+  const L = linkage(projects.find(x => x.id === currentProjectId));
   $('#emTitle').textContent = e ? '編輯成本項目' : '新增成本項目';
   $('#eDate').value = e?.date || today();
-  $('#eTrade').value = e?.trade || entryFilter.trade || TRADES[0];
+  fillTradeSelect(e?.trade || entryFilter.trade || tradeNames()[0]);
   $('#eVendor').value = e?.vendor || '';
+  $('#eVendor').placeholder = '例：XX木作';
   $('#eDesc').value = e?.description || '';
   $('#eAmount').value = e?.amount ?? '';
   $('#eTax').value = e ? (e.taxIncluded ? 'inc' : 'exc') : 'exc';
@@ -603,6 +812,8 @@ function openEntryModal(e) {
   $('#eOut').checked = !!e?.isOutsource;
   $('#eLink').value = e?.fileLink || '';
   $('#eNote').value = e?.note || '';
+  fillSlotSelect(L, slot ? slot.id : e?.slotId ?? null);
+  if (slot) applySlotToForm(slot);
   const vendors = [...new Set(entries.map(x => x.vendor).filter(Boolean))].sort();
   $('#vendorList').innerHTML = vendors.map(v => `<option value="${esc(v)}">`).join('');
   $('#entryModal').classList.remove('hidden');
@@ -615,11 +826,20 @@ async function saveEntry() {
   if (raw === '' || !Number.isFinite(amount)) return toast('請輸入金額', true);
   const link = $('#eLink').value.trim();
   if (link && !safeLink(link)) return toast('檔案連結必須以 https:// 開頭', true);
+  const L = linkage(projects.find(x => x.id === currentProjectId));
+  const sv = $('#eSlot').value; let slotId = L && sv !== '' ? Number(sv) : null;
+  const old = editingEntryId ? entries.find(x => x.id === editingEntryId) : null;
+  let slotSnap = null;
+  if (!L && old) { slotId = old.slotId ?? null; slotSnap = old.slotSnap ?? null; } // 通告暫時讀不到時，保留原本的連結
+  else if (slotId != null) {
+    // 沿用原本的快照，通告的後續異動才會繼續被標示；換了工項才重新記錄
+    slotSnap = old && old.slotId === slotId && editingSlotSnap ? editingSlotSnap : snapOf(L.slotById(slotId) || {});
+  }
   const data = {
     projectId: currentProjectId, date: $('#eDate').value || today(), trade: $('#eTrade').value,
     vendor: $('#eVendor').value.trim(), description: $('#eDesc').value.trim(), amount,
     taxIncluded: $('#eTax').value === 'inc', status: $('#eStatus').value, isOutsource: $('#eOut').checked,
-    fileLink: link, note: $('#eNote').value.trim(), updatedAt: serverTimestamp()
+    fileLink: link, note: $('#eNote').value.trim(), slotId, slotSnap, updatedAt: serverTimestamp()
   };
   try {
     if (editingEntryId) await updateDoc(doc(db, 'cost_entries', editingEntryId), data);
@@ -638,6 +858,40 @@ async function deleteEntry(id) {
   } catch (err) { handleErr(err); }
 }
 
+/* ===== 通告異動處理 ===== */
+function changePayload(e, s) {
+  const now = snapOf(s);
+  const data = { trade: now.type, date: now.date, slotSnap: now, updatedAt: serverTimestamp() };
+  // 成本說明若仍是當初從通告帶入的文字，就一起更新；若已自行修改則保留
+  if ((e.description || '') === (e.slotSnap?.desc || '').slice(0, 100)) data.description = now.desc.slice(0, 100);
+  return data;
+}
+async function applyChange(id) {
+  const e = entries.find(x => x.id === id), L = linkage(projects.find(x => x.id === currentProjectId));
+  const s = L?.slotById(e?.slotId); if (!s) return;
+  try { await updateDoc(doc(db, 'cost_entries', id), changePayload(e, s)); toast('已套用通告異動'); }
+  catch (err) { handleErr(err); }
+}
+async function ignoreChange(id) {
+  const e = entries.find(x => x.id === id), L = linkage(projects.find(x => x.id === currentProjectId));
+  const s = L?.slotById(e?.slotId); if (!s) return;
+  try { await updateDoc(doc(db, 'cost_entries', id), { slotSnap: snapOf(s), updatedAt: serverTimestamp() }); toast('已保留原本的成本資料'); }
+  catch (err) { handleErr(err); }
+}
+async function applyAll() {
+  const L = linkage(projects.find(x => x.id === currentProjectId)); if (!L) return;
+  if (!confirm(`將 ${L.changedEntries.length} 筆成本的工種與日期更新為通告目前的內容？`)) return;
+  try {
+    const batch = writeBatch(db);
+    L.changedEntries.forEach(e => batch.update(doc(db, 'cost_entries', e.id), changePayload(e, L.slotById(e.slotId))));
+    await batch.commit(); toast('已全部套用');
+  } catch (err) { handleErr(err); }
+}
+async function unlinkEntry(id) {
+  try { await updateDoc(doc(db, 'cost_entries', id), { slotId: null, slotSnap: null, updatedAt: serverTimestamp() }); toast('已取消連結，成本保留'); }
+  catch (err) { handleErr(err); }
+}
+
 /* ===== 事件 ===== */
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-action]'); if (!b) return;
@@ -645,7 +899,7 @@ document.addEventListener('click', ev => {
   if (a === 'logout') { signOut(auth); return; }
   if (a === 'list-filter') { listFilter = b.dataset.f; renderList(); }
   if (a === 'new-project') openProjectModal(null);
-  if (a === 'open-project') { currentProjectId = b.dataset.id; view = 'detail'; entryFilter = { trade: '', status: '', q: '' }; renderDetail(); window.scrollTo(0, 0); }
+  if (a === 'open-project') { currentProjectId = b.dataset.id; view = 'detail'; slotFilter = 'all'; entryFilter = { trade: '', status: '', q: '' }; renderDetail(); window.scrollTo(0, 0); }
   if (a === 'back') { view = 'list'; currentProjectId = null; renderList(); }
   if (a === 'edit-project') openProjectModal(projects.find(x => x.id === currentProjectId));
   if (a === 'delete-project') deleteProject();
@@ -654,9 +908,20 @@ document.addEventListener('click', ev => {
   if (a === 'edit-entry') openEntryModal(entries.find(x => x.id === b.dataset.id));
   if (a === 'delete-entry') deleteEntry(b.dataset.id);
   if (a === 'save-entry') saveEntry();
+  if (a === 'slot-filter') { slotFilter = b.dataset.f; renderDetail(); }
+  if (a === 'entry-from-slot') {
+    const L = linkage(projects.find(x => x.id === currentProjectId));
+    const s = L?.slotById(Number(b.dataset.slot)); if (s) openEntryModal(null, s);
+  }
+  if (a === 'toggle-ignore') toggleIgnore(Number(b.dataset.slot));
+  if (a === 'apply-change') applyChange(b.dataset.id);
+  if (a === 'ignore-change') ignoreChange(b.dataset.id);
+  if (a === 'apply-all') applyAll();
+  if (a === 'unlink-entry') unlinkEntry(b.dataset.id);
   if (a === 'close-modal') $('#' + b.dataset.target).classList.add('hidden');
 });
 /* 視窗刻意不因點擊背景或 ESC 關閉（避免中文輸入法衝突），與其他系統一致 */
+
 </script>
 </body>
 </html>
