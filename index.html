@@ -102,7 +102,7 @@ main{max-width:1080px;margin:0 auto;padding:24px}
 .dhead .sub{color:var(--muted);font-size:14px}
 .dhead .acts{display:flex;gap:8px;flex-wrap:wrap}
 .dsum{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;margin-bottom:24px}
-.dsum .figs{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+.dsum .figs{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;margin-bottom:18px}
 .dsum .figs span{display:block;font-size:13px;color:var(--muted)}
 .dsum .figs strong{font-size:20px}
 .dsum .ruler{height:14px;border-radius:7px}
@@ -134,9 +134,9 @@ tr.total td{font-weight:700;background:#faf9fc}
 .tag.trade{color:#fff;border:0}
 .tag.out{border-color:#2f6b4f;color:#2f6b4f}
 .st{font-size:12px;padding:1px 8px;border-radius:10px;font-weight:500}
-.st-報價{background:#f0edf8;color:#6b5f9e}
-.st-已請款{background:#e5e1f3;color:#4e4387}
-.st-已付款{background:var(--paid);color:#fff}
+.st-廠商未請款{background:#f0edf8;color:#6b5f9e}
+.st-廠商已請款{background:#e5e1f3;color:#4e4387}
+.st-公司已付款{background:var(--paid);color:#fff}
 .erow .amt{text-align:right}
 .erow .amt strong{display:block;font-size:16px}
 .erow .amt small{font-size:12px;color:var(--muted)}
@@ -193,7 +193,7 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
   .overview{grid-template-columns:1fr 1fr}
   .prow{grid-template-columns:1fr;gap:10px}
   .prow .pfig{text-align:left}
-  .dsum .figs{grid-template-columns:1fr 1fr}
+  .dsum .figs{grid-template-columns:1fr 1fr 1fr}
   .erow{grid-template-columns:1fr auto;gap:6px 12px}
   .erow .date{grid-column:1/-1}
   .erow .ops{grid-column:1/-1;justify-content:flex-end}
@@ -240,6 +240,7 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
     <p class="hint">連結後，通告中的工作項目會自動帶入對照，通告有新增或修改時也會同步顯示。</p>
     <p class="hint hidden" id="pFollow">專案名稱與狀態會跟著通告自動更新。</p>
     <div class="field"><label for="pName">專案名稱</label><input id="pName" placeholder="例：嘉博-葉王展"></div>
+    <div class="field"><label for="pContract">標案金額（含稅）</label><input id="pContract" type="number" inputmode="numeric" min="0" placeholder="用來計算利潤"></div>
     <div class="row2">
       <div class="field"><label for="pStatus">狀態</label><select id="pStatus"><option>進行中</option><option>已結案</option></select></div>
       <div class="field"><label for="pBudget">總預算（含稅）</label><input id="pBudget" type="number" inputmode="numeric" min="0" placeholder="留空則使用分項合計"></div>
@@ -267,13 +268,13 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
       <div class="field"><label for="eDate">日期</label><input id="eDate" type="date"></div>
       <div class="field"><label for="eTrade">工種</label><select id="eTrade"></select></div>
     </div>
-    <div class="field"><label for="eVendor">廠商</label><input id="eVendor" list="vendorList" placeholder="例：XX木作"><datalist id="vendorList"></datalist></div>
+    <div class="field"><label for="eVendor">廠商</label><input id="eVendor" list="vendorList" placeholder="郁通、俊偉"><datalist id="vendorList"></datalist></div>
     <div class="field"><label for="eDesc">項目內容</label><input id="eDesc" placeholder="例：展櫃製作 ×6"></div>
     <div class="row2">
       <div class="field"><label for="eAmount">金額</label><input id="eAmount" type="number" inputmode="numeric" step="1"></div>
       <div class="field"><label for="eTax">稅別</label><select id="eTax"><option value="exc">未稅（自動加 5%）</option><option value="inc">含稅</option></select></div>
     </div>
-    <div class="field"><label for="eStatus">進度</label><select id="eStatus"><option>報價</option><option>已請款</option><option>已付款</option></select></div>
+    <div class="field"><label for="eStatus">進度</label><select id="eStatus"><option>廠商未請款</option><option>廠商已請款</option><option>公司已付款</option></select></div>
     <label class="check"><input type="checkbox" id="eOut"> 外包施作</label>
     <div class="field"><label for="eLink">相關檔案連結（報價單、發票）</label><input id="eLink" type="url" placeholder="https://drive.google.com/..."></div>
     <div class="field"><label for="eNote">備註</label><textarea id="eNote"></textarea></div>
@@ -334,6 +335,13 @@ function plain(html) {
 }
 const snapOf = s => ({ type: s.type || '', date: s.date || '', endDate: s.endDate || '', desc: plain(s.desc).slice(0, 300) });
 
+/* 成本進度（舊資料的 報價／已請款／已付款 會自動對應到新名稱） */
+const STATUSES = ['廠商未請款', '廠商已請款', '公司已付款'];
+const OLD_STATUS = { '報價': '廠商未請款', '已請款': '廠商已請款', '已付款': '公司已付款' };
+const normStatus = st => OLD_STATUS[st] || (STATUSES.includes(st) ? st : '廠商未請款');
+/* 利潤 = 標案金額（含稅）− 成本 − 標案金額 × 稅率 */
+const TAX_RATE = 0.11;
+const profitOf = (contract, cost) => contract - cost - Math.round(contract * TAX_RATE);
 let projects = [], entries = [], notices = new Map(), unsubs = [];
 let view = 'list', currentProjectId = null, listFilter = '進行中', slotFilter = 'all';
 let editingProjectId = null, editingEntryId = null;
@@ -376,7 +384,7 @@ function enterApp(user) {
     projects = snap.docs.map(d => ({ id: d.id, ...d.data() })); render();
   }, handleErr));
   unsubs.push(onSnapshot(collection(db, 'cost_entries'), snap => {
-    entries = snap.docs.map(d => ({ id: d.id, ...d.data() })); render();
+    entries = snap.docs.map(d => { const x = { id: d.id, ...d.data() }; x.status = normStatus(x.status); return x; }); render();
   }, handleErr));
   unsubs.push(onSnapshot(collection(db, NOTICES_COLLECTION), snap => {
     notices = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }])); render();
@@ -427,8 +435,8 @@ function summarize(pid) {
     const v = taxed(e);
     const b = s.byTrade[e.trade] ||= { est: 0, inv: 0, paid: 0 };
     s.est += v; b.est += v;
-    if (e.status !== '報價') { s.inv += v; b.inv += v; }
-    if (e.status === '已付款') { s.paid += v; b.paid += v; }
+    if (e.status !== '廠商未請款') { s.inv += v; b.inv += v; }
+    if (e.status === '公司已付款') { s.paid += v; b.paid += v; }
   }
   return s;
 }
@@ -467,14 +475,14 @@ function rulerHTML(budget, s) {
   const max = Math.max(budget, s.est, 1);
   const pct = v => (v / max * 100).toFixed(2) + '%';
   const over = budget > 0 && s.est > budget;
-  return `<div class="ruler${over ? ' over' : ''}" title="預算 ${fmt(budget)}／預估 ${fmt(s.est)}">
+  return `<div class="ruler${over ? ' over' : ''}" title="預算 ${fmt(budget)}／成本 ${fmt(s.est)}">
     <div class="fill f-quote" style="width:${pct(s.est)}"></div>
     <div class="fill f-invoice" style="width:${pct(s.inv)}"></div>
     <div class="fill f-paid" style="width:${pct(s.paid)}"></div>
     ${budget > 0 ? `<div class="budget-mark" style="left:calc(${pct(budget)} - 1px)"></div>` : ''}
   </div>`;
 }
-const legendHTML = `<div class="legend"><span><i style="background:var(--paid)"></i>已付款</span><span><i style="background:var(--invoice)"></i>已請款</span><span><i style="background:var(--quote)"></i>報價</span><span><i style="background:var(--ink);width:2px"></i>預算線</span></div>`;
+const legendHTML = `<div class="legend"><span><i style="background:var(--paid)"></i>公司已付款</span><span><i style="background:var(--invoice)"></i>廠商已請款</span><span><i style="background:var(--quote)"></i>廠商未請款</span><span><i style="background:var(--ink);width:2px"></i>預算線</span></div>`;
 
 /* ===== 畫面 ===== */
 function render() {
@@ -544,10 +552,10 @@ function renderList() {
       </div>
       <div>
         ${rulerHTML(budget, s)}
-        <div class="pnums num"><span>已付 ${fmt(s.paid)}</span><span>預估 ${fmt(s.est)} / 預算 ${budget ? fmt(budget) : '未設定'}</span></div>
+        <div class="pnums num"><span>已付 ${fmt(s.paid)}</span><span>成本 ${fmt(s.est)} / 預算 ${budget ? fmt(budget) : '未設定'}</span></div>
       </div>
       <div class="pfig num">
-        ${budget ? `<strong class="${diff < 0 ? 'neg' : 'pos'}">${diff < 0 ? '超支 ' : ''}${fmt(Math.abs(diff))}</strong><small>${diff < 0 ? '超出預算' : '預算餘額'}</small>` : `<strong>${fmt(s.est)}</strong><small>預估成本</small>`}
+        ${budget ? `<strong class="${diff < 0 ? 'neg' : 'pos'}">${diff < 0 ? '超支 ' : ''}${fmt(Math.abs(diff))}</strong><small>${diff < 0 ? '超出預算' : '預算餘額'}</small>` : `<strong>${fmt(s.est)}</strong><small>成本</small>`}
       </div>
     </button>`;
   }).join('');
@@ -556,7 +564,7 @@ function renderList() {
     <div class="overview num">
       <div><span>進行中專案</span><strong>${items.filter(i => i.status !== '已結案').length}</strong></div>
       <div><span>進行中總預算</span><strong>${fmt(tb)}</strong></div>
-      <div><span>進行中預估成本</span><strong class="${te > tb && tb > 0 ? 'neg' : ''}">${fmt(te)}</strong></div>
+      <div><span>進行中成本</span><strong class="${te > tb && tb > 0 ? 'neg' : ''}">${fmt(te)}</strong></div>
       <div><span>進行中已付款</span><strong>${fmt(tp)}</strong></div>
     </div>
     <div class="bar-head">
@@ -660,6 +668,7 @@ function renderDetail() {
   if (!p) { view = 'list'; renderList(); return; }
   const s = summarize(p.id), budget = Number(p.budget) || 0, bt = p.budgetByTrade || {};
   const remain = budget - s.est, L = linkage(p);
+  const contract = Number(p.contractAmount) || 0, profit = profitOf(contract, s.est);
   const tradesUsed = tradeNames().filter(t => bt[t] || s.byTrade[t]);
   [...Object.keys(bt), ...Object.keys(s.byTrade)].forEach(t => { if (!tradesUsed.includes(t)) tradesUsed.push(t); });
 
@@ -686,18 +695,20 @@ function renderDetail() {
     </div>
     <div class="dsum">
       <div class="figs num">
+        <div><span>標案金額（含稅）</span><strong>${contract ? fmt(contract) : '未設定'}</strong></div>
         <div><span>預算</span><strong>${budget ? fmt(budget) : '未設定'}</strong></div>
-        <div><span>預估成本</span><strong>${fmt(s.est)}</strong></div>
-        <div><span>已請款</span><strong>${fmt(s.inv)}</strong></div>
+        <div><span>成本</span><strong>${fmt(s.est)}</strong></div>
+        <div><span>廠商請款</span><strong>${fmt(s.inv)}</strong></div>
         <div><span>已付款</span><strong>${fmt(s.paid)}</strong></div>
         <div><span>${remain < 0 ? '超出預算' : '預算餘額'}</span><strong class="${budget ? (remain < 0 ? 'neg' : 'pos') : ''}">${budget ? fmt(Math.abs(remain)) : '—'}</strong></div>
+        <div title="標案金額 − 成本 − 標案金額 × ${TAX_RATE * 100}% 稅額"><span>利潤</span><strong class="${contract ? (profit < 0 ? 'neg' : 'pos') : ''}">${contract ? fmt(profit) : '—'}</strong>${contract ? `<small style="display:block;font-size:11px;color:var(--muted)">稅額 ${fmt(Math.round(contract * TAX_RATE))}｜${(profit / contract * 100).toFixed(1)}%</small>` : ''}</div>
       </div>
       ${rulerHTML(budget, s)}
       ${legendHTML}
     </div>
     ${tradesUsed.length ? `<h3 class="sec">工種分析（含稅）</h3>
     <div class="tbl-wrap"><table class="num">
-      <thead><tr><th>工種</th><th>預算</th><th>預估</th><th>已請款</th><th>已付款</th><th>預算 − 預估</th></tr></thead>
+      <thead><tr><th>工種</th><th>預算</th><th>成本</th><th>廠商請款</th><th>已付款</th><th>預算 − 成本</th></tr></thead>
       <tbody>${tradeRows}
       <tr class="total"><td>合計</td><td>${sumBt ? fmt(sumBt) : '—'}</td><td>${fmt(s.est)}</td><td>${fmt(s.inv)}</td><td>${fmt(s.paid)}</td><td>${sumBt ? fmt(sumBt - s.est) : '—'}</td></tr>
       </tbody></table></div>` : ''}
@@ -705,7 +716,7 @@ function renderDetail() {
     <h3 class="sec">全部成本項目</h3>
     <div class="filters">
       <select id="fTrade" aria-label="工種篩選"><option value="">全部工種</option>${tradeNames().map(t => `<option ${entryFilter.trade === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-      <select id="fStatus" aria-label="進度篩選"><option value="">全部進度</option>${['報價', '已請款', '已付款'].map(t => `<option ${entryFilter.status === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <select id="fStatus" aria-label="進度篩選"><option value="">全部進度</option>${STATUSES.map(t => `<option ${entryFilter.status === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <input id="fQ" placeholder="搜尋廠商或內容" value="${esc(entryFilter.q)}">
     </div>
     <div class="elist" id="elist"></div>`;
@@ -783,6 +794,7 @@ function openProjectModal(p) {
   $('#pName').value = p?.name || '';
   $('#pStatus').value = p?.status || '進行中';
   $('#pBudget').value = p?.budget || '';
+  $('#pContract').value = p?.contractAmount || '';
   $('#pNote').value = p?.note || '';
   fillNoticeSelect(p?.noticeId || '');
   syncModalToNotice();
@@ -803,7 +815,7 @@ async function saveProject() {
   let budget = Number($('#pBudget').value) || 0;
   if (!budget) budget = Object.values(byTrade).reduce((a, b) => a + b, 0);
   const nid = $('#pNoticeId').value, n = notices.get(nid);
-  const data = { name, status: $('#pStatus').value, budget, budgetByTrade: byTrade,
+  const data = { name, status: $('#pStatus').value, budget, contractAmount: Number($('#pContract').value) || 0, budgetByTrade: byTrade,
     noticeId: nid || null, noticeRef: n ? noticeTitle(n) : '', note: $('#pNote').value.trim(), updatedAt: serverTimestamp() };
   try {
     if (editingProjectId) await updateDoc(doc(db, 'cost_projects', editingProjectId), data);
@@ -856,7 +868,6 @@ function applySlotToForm(s) {
   fillTradeSelect(s.type);
   $('#eDate').value = s.date || today();
   if (!$('#eDesc').value.trim()) $('#eDesc').value = plain(s.desc).slice(0, 100);
-  $('#eVendor').placeholder = (s.assignees || []).length ? '負責：' + s.assignees.join('、') : '例：XX木作';
 }
 $('#eSlot').addEventListener('change', e => {
   const L = linkage(projects.find(x => x.id === currentProjectId));
@@ -872,17 +883,16 @@ function openEntryModal(e, slot) {
   $('#eDate').value = e?.date || today();
   fillTradeSelect(e?.trade || entryFilter.trade || tradeNames()[0]);
   $('#eVendor').value = e?.vendor || '';
-  $('#eVendor').placeholder = '例：XX木作';
   $('#eDesc').value = e?.description || '';
   $('#eAmount').value = e?.amount ?? '';
   $('#eTax').value = e ? (e.taxIncluded ? 'inc' : 'exc') : 'exc';
-  $('#eStatus').value = e?.status || '報價';
+  $('#eStatus').value = e?.status || '廠商未請款';
   $('#eOut').checked = !!e?.isOutsource;
   $('#eLink').value = e?.fileLink || '';
   $('#eNote').value = e?.note || '';
   fillSlotSelect(L, slot ? slot.id : e?.slotId ?? null);
   if (slot) applySlotToForm(slot);
-  const vendors = [...new Set(entries.map(x => x.vendor).filter(Boolean))].sort();
+  const vendors = [...new Set(['郁通', '俊偉', ...entries.map(x => x.vendor).filter(Boolean)])];
   $('#vendorList').innerHTML = vendors.map(v => `<option value="${esc(v)}">`).join('');
   $('#entryModal').classList.remove('hidden');
   $('#eVendor').focus();
@@ -981,8 +991,10 @@ function sheet(rows, widths) {
 }
 function projectRow(p) {
   const s = summarize(p.id), b = Number(p.budget) || 0, L = linkage(p), h = L?.n.headerCfg || {};
+  const ct = Number(p.contractAmount) || 0;
   return { '專案': projName(p), '狀態': projStatus(p), '地點': h.venue || '', '期間': h.date || '',
-    '預算': b, '預估成本': s.est, '已請款': s.inv, '已付款': s.paid, '預算餘額': b ? b - s.est : '',
+    '標案金額': ct || '', '預算': b, '成本': s.est, '廠商請款': s.inv, '已付款': s.paid, '預算餘額': b ? b - s.est : '',
+    '稅額(11%)': ct ? Math.round(ct * TAX_RATE) : '', '利潤': ct ? profitOf(ct, s.est) : '',
     '成本筆數': s.count, '未建立成本工項': L ? L.missing : '', '通告異動待確認': L ? L.changedEntries.length + L.orphans.length : '' };
 }
 function entryRows(ps) {
@@ -1006,7 +1018,7 @@ function tradeRows(ps) {
     const ts_ = [...new Set([...tradeNames().filter(t => bt[t] || s.byTrade[t]), ...Object.keys(bt), ...Object.keys(s.byTrade)])];
     ts_.forEach(t => {
       const b = Number(bt[t]) || 0, x = s.byTrade[t] || { est: 0, inv: 0, paid: 0 };
-      out.push({ '專案': projName(p), '工種': t, '預算': b || '', '預估': x.est, '已請款': x.inv, '已付款': x.paid, '預算−預估': b ? b - x.est : '' });
+      out.push({ '專案': projName(p), '工種': t, '預算': b || '', '成本': x.est, '廠商請款': x.inv, '已付款': x.paid, '預算−成本': b ? b - x.est : '' });
     });
   });
   return out;
@@ -1027,7 +1039,7 @@ async function exportExcel(projectId) {
       : listItems().filter(i => i.p && (listFilter === '全部' || i.status === listFilter)).map(i => i.p);
     if (!ps.length) return toast('目前沒有可匯出的專案', true);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sheet(ps.map(projectRow), [28, 8, 22, 22, 12, 12, 12, 12, 12, 9, 13, 13]), '專案總表');
+    XLSX.utils.book_append_sheet(wb, sheet(ps.map(projectRow), [28, 8, 22, 22, 12, 12, 12, 12, 12, 12, 12, 12, 9, 13, 13]), '專案總表');
     XLSX.utils.book_append_sheet(wb, sheet(tradeRows(ps), [28, 12, 12, 12, 12, 12, 12]), '工種統計');
     XLSX.utils.book_append_sheet(wb, sheet(entryRows(ps), [28, 11, 10, 16, 30, 12, 6, 12, 8, 6, 30, 30, 20]), '成本明細');
     if (projectId) { const sr = slotRows(ps[0]); if (sr) XLSX.utils.book_append_sheet(wb, sheet(sr, [14, 10, 40, 16, 9, 14, 11]), '通告工項對照'); }
@@ -1077,7 +1089,7 @@ async function importBackup(ev) {
     await commitInChunks(newP, (batch, p) => batch.set(doc(db, 'cost_projects', p.id), { budget: 0, ...clean(p), name: p.name || '未命名專案', budget: Number(p.budget) || 0 }));
     const allP = new Set([...pIds, ...newP.map(p => p.id)]);
     const okE = newE.filter(e => allP.has(e.projectId));
-    await commitInChunks(okE, (batch, e) => batch.set(doc(db, 'cost_entries', e.id), clean(e)));
+    await commitInChunks(okE, (batch, e) => batch.set(doc(db, 'cost_entries', e.id), { ...clean(e), status: normStatus(e.status) }));
     alert(`匯入完成！\n✅ 新增專案 ${newP.length} 筆、成本項目 ${okE.length} 筆\n⏭ 跳過已存在的資料${newE.length - okE.length ? `\n⚠️ ${newE.length - okE.length} 筆成本找不到對應專案，未匯入` : ''}`);
   } catch (err) {
     console.error(err);
