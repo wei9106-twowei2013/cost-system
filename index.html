@@ -181,6 +181,7 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
 .echips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .echip{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 8px;font-size:12px;display:inline-flex;gap:6px;align-items:center}
 .echip:hover{border-color:var(--brand)}
+.echip.dup{border-color:var(--over);background:#fdf0ef}
 .chg{margin-top:6px;font-size:12px;background:#fdf0ef;border:1px solid #f2cfcc;color:#8a3431;border-radius:6px;padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .chg span{flex:1;min-width:160px}
 .tag.chgtag{border-color:#e5a9a6;color:var(--over)}
@@ -290,6 +291,7 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
       <div class="hint" id="eLinkHint" style="margin:4px 0 0"></div></div>
     <div class="field"><label for="eNote">備註</label><textarea id="eNote"></textarea></div>
     <div class="mfoot">
+      <button class="btn danger" id="eDelete" data-action="delete-entry-modal" style="margin-right:auto">刪除這筆</button>
       <button class="btn" data-action="close-modal" data-target="entryModal">取消</button>
       <button class="btn primary" data-action="save-entry">儲存項目</button>
     </div>
@@ -614,8 +616,8 @@ function fileBtn(e) {
   const link = safeLink(e.fileLink);
   return link ? `<a class="filebtn" href="${esc(link)}" target="_blank" rel="noopener noreferrer" title="${esc(link)}">📎 查看檔案</a>` : '';
 }
-function entryChip(e) {
-  return `<span class="echipwrap"><button class="echip" data-action="edit-entry" data-id="${esc(e.id)}"><span>${esc(e.vendor || '未填廠商')}</span><b class="num">${fmt(taxed(e))}</b><span class="st st-${esc(e.status)}">${esc(e.status)}</span></button>${fileBtn(e)}</span>`;
+function entryChip(e, dup) {
+  return `<span class="echipwrap"><button class="echip${dup ? ' dup' : ''}" data-action="edit-entry" data-id="${esc(e.id)}"><span>${esc(e.vendor || '未填廠商')}</span><b class="num">${fmt(taxed(e))}</b><span class="st st-${esc(e.status)}">${esc(e.status)}</span></button>${fileBtn(e)}</span>`;
 }
 
 function slotSectionHTML(p, L) {
@@ -650,12 +652,13 @@ function slotSectionHTML(p, L) {
           <div>
             <div class="sdesc">${esc(desc.length > 120 ? desc.slice(0, 120) + '…' : desc)}</div>
             ${(s.assignees || []).length ? `<div class="smeta">負責：${esc(s.assignees.join('、'))}</div>` : ''}
-            ${le.length ? `<div class="echips">${le.map(entryChip).join('')}</div>` : ''}
+            ${le.length ? `<div class="echips">${le.map(e => entryChip(e, le.some(o => o !== e && (o.vendor || '') === (e.vendor || '') && Number(o.amount) === Number(e.amount)))).join('')}</div>` : ''}
+            ${le.some((e, i) => le.some((o, j) => j !== i && (o.vendor || '') === (e.vendor || '') && Number(o.amount) === Number(e.amount))) ? '<div class="chg"><span>這個工項有廠商和金額都相同的成本，可能重複建立了。點成本可修改或刪除。</span></div>' : ''}
             ${miss ? '<div class="need">尚未建立成本</div>' : ''}${ign ? '<div class="smeta">已標記不計成本</div>' : ''}
             ${changes}
           </div>
           <div class="sacts">
-            ${ign ? '' : `<button class="btn sm" data-action="entry-from-slot" data-slot="${esc(s.id)}">建立成本</button>`}
+            ${ign ? '' : `<button class="btn sm" data-action="entry-from-slot" data-slot="${esc(s.id)}">${le.length ? '＋ 再加一筆' : '建立成本'}</button>`}
             ${le.length ? '' : `<button class="btn ghost sm" data-action="toggle-ignore" data-slot="${esc(s.id)}">${ign ? '恢復計算' : '不計成本'}</button>`}
           </div>
         </div>`;
@@ -903,6 +906,7 @@ function openEntryModal(e, slot) {
   editingSlotSnap = e?.slotSnap || null;
   const L = linkage(projects.find(x => x.id === currentProjectId));
   $('#emTitle').textContent = e ? '編輯成本項目' : '新增成本項目';
+  $('#eDelete').classList.toggle('hidden', !e);
   $('#eDate').value = e?.date || today();
   fillTradeSelect(e?.trade || entryFilter.trade || tradeNames()[0]);
   $('#eVendor').value = e?.vendor || '';
@@ -922,6 +926,7 @@ function openEntryModal(e, slot) {
   $('#eVendor').focus();
 }
 
+let savingEntry = false;
 async function saveEntry() {
   const raw = $('#eAmount').value.trim();
   const amount = Number(raw);
@@ -937,27 +942,37 @@ async function saveEntry() {
     // 沿用原本的快照，通告的後續異動才會繼續被標示；換了工項才重新記錄
     slotSnap = old && old.slotId === slotId && editingSlotSnap ? editingSlotSnap : snapOf(L.slotById(slotId) || {});
   }
+  if (savingEntry) return;
+  const vendorV = $('#eVendor').value.trim();
+  if (!editingEntryId) {
+    const dup = entries.find(x => x.projectId === currentProjectId && (x.vendor || '') === vendorV && Number(x.amount) === amount
+      && (slotId != null ? x.slotId === slotId : x.trade === $('#eTrade').value));
+    if (dup && !confirm(`這個工項已經有一筆相同的成本：\n${dup.vendor || '未填廠商'}｜${fmt(taxed(dup))}｜${dup.status}\n\n如果是要更新請款或付款進度，請按「取消」，再點那筆成本直接修改。\n確定要再新增一筆嗎？`)) return;
+  }
   const data = {
     projectId: currentProjectId, date: $('#eDate').value || today(), trade: $('#eTrade').value,
     vendor: $('#eVendor').value.trim(), description: $('#eDesc').value.trim(), amount,
     taxIncluded: $('#eTax').value === 'inc', status: $('#eStatus').value, isOutsource: $('#eOut').checked,
     fileLink: link, note: $('#eNote').value.trim(), slotId, slotSnap, updatedAt: serverTimestamp()
   };
+  savingEntry = true;
+  const btn = $('[data-action="save-entry"]'); btn.disabled = true; btn.textContent = '儲存中…';
   try {
     if (editingEntryId) await updateDoc(doc(db, 'cost_entries', editingEntryId), data);
     else { data.createdAt = serverTimestamp(); await addDoc(collection(db, 'cost_entries'), data); }
     $('#entryModal').classList.add('hidden');
     toast('項目已儲存');
   } catch (err) { handleErr(err); }
+  finally { savingEntry = false; btn.disabled = false; btn.textContent = '儲存項目'; }
 }
 
 async function deleteEntry(id) {
   const e = entries.find(x => x.id === id); if (!e) return;
-  if (!confirm(`確定刪除「${e.vendor || ''} ${e.description || ''}」（${fmt(taxed(e))}）？`)) return;
+  if (!confirm(`確定刪除「${e.vendor || ''} ${e.description || ''}」（${fmt(taxed(e))}）？`)) return false;
   try {
     const batch = writeBatch(db); batch.delete(doc(db, 'cost_entries', id)); await batch.commit();
-    toast('項目已刪除');
-  } catch (err) { handleErr(err); }
+    toast('項目已刪除'); return true;
+  } catch (err) { handleErr(err); return false; }
 }
 
 /* ===== 通告異動處理 ===== */
@@ -1142,6 +1157,7 @@ document.addEventListener('click', ev => {
   if (a === 'edit-entry') openEntryModal(entries.find(x => x.id === b.dataset.id));
   if (a === 'delete-entry') deleteEntry(b.dataset.id);
   if (a === 'save-entry') saveEntry();
+  if (a === 'delete-entry-modal' && editingEntryId) deleteEntry(editingEntryId).then(ok => { if (ok) $('#entryModal').classList.add('hidden'); });
   if (a === 'slot-filter') { slotFilter = b.dataset.f; renderDetail(); }
   if (a === 'entry-from-slot') {
     const L = linkage(projects.find(x => x.id === currentProjectId));
