@@ -891,10 +891,17 @@ function fillTradeSelect(sel) {
   const names = tradeNames(); if (sel && !names.includes(sel)) names.push(sel);
   $('#eTrade').innerHTML = names.map(t => `<option ${t === sel ? 'selected' : ''}>${esc(t)}</option>`).join('');
 }
+/* 從通告帶入廠商時要排除的公司同仁（要增減人名改這裡） */
+const STAFF_NAMES = ['俊偉', '惠萍', '珊君', '念芝', '冠妏'];
+const vendorFromSlot = s => (s.assignees || []).map(x => String(x).trim()).filter(x => x && !STAFF_NAMES.includes(x)).join('、');
+let autoVendor = '', autoDesc = '';
 function applySlotToForm(s) {
   fillTradeSelect(s.type);
   $('#eDate').value = s.date || today();
-  if (!$('#eDesc').value.trim()) $('#eDesc').value = plain(s.desc).slice(0, 100);
+  // 欄位是空的，或仍是上一次自動帶入的內容時才覆蓋，避免蓋掉你手動修改過的文字
+  const v = $('#eVendor').value.trim(), d = $('#eDesc').value.trim();
+  if (!v || v === autoVendor) { autoVendor = vendorFromSlot(s); $('#eVendor').value = autoVendor; }
+  if (!d || d === autoDesc) { autoDesc = plain(s.desc).slice(0, 100); $('#eDesc').value = autoDesc; }
 }
 $('#eSlot').addEventListener('change', e => {
   const L = linkage(projects.find(x => x.id === currentProjectId));
@@ -904,6 +911,7 @@ $('#eSlot').addEventListener('change', e => {
 
 function openEntryModal(e, slot) {
   editingEntryId = e?.id || null;
+  autoVendor = ''; autoDesc = '';
   editingSlotSnap = e?.slotSnap || null;
   const L = linkage(projects.find(x => x.id === currentProjectId));
   $('#emTitle').textContent = e ? '編輯成本項目' : '新增成本項目';
