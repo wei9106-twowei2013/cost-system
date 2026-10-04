@@ -196,6 +196,12 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
 .ico{flex-shrink:0}
 .echipwrap{display:inline-flex;gap:4px;align-items:center}
 
+.pct{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end}
+.pct-bar{width:60px;height:6px;background:#eceaf2;border-radius:3px;overflow:hidden;display:inline-block}
+.pct-bar i{display:block;height:100%;background:var(--invoice)}
+.pct-bar i.over{background:var(--over)}
+.pct span:last-child{min-width:46px;text-align:right}
+
 @media (max-width:720px){
   main{padding:16px}
   header.top{padding:12px 16px}
@@ -485,6 +491,12 @@ function linkage(p) {
 }
 const noticeTitle = n => n?.headerCfg?.title || '（未命名通告）';
 
+/* 工種成本佔專案總預算的比例（含小長條） */
+function pctBar(v, budget) {
+  if (!budget) return '—';
+  const pct = v / budget * 100, w = Math.min(pct, 100);
+  return `<span class="pct"><span class="pct-bar"><i style="width:${w.toFixed(1)}%"${pct > 100 ? ' class="over"' : ''}></i></span><span class="${pct > 100 ? 'neg' : ''}">${pct.toFixed(1)}%</span></span>`;
+}
 function rulerHTML(budget, s) {
   const max = Math.max(budget, s.est, 1);
   const pct = v => (v / max * 100).toFixed(2) + '%';
@@ -695,7 +707,8 @@ function renderDetail() {
     const b = Number(bt[t]) || 0, x = s.byTrade[t] || { est: 0, inv: 0, paid: 0 }, d = b - x.est;
     return `<tr><td><span class="dot" style="background:${tradeColor(t)}"></span>${esc(t)}</td>
       <td>${b ? fmt(b) : '—'}</td><td>${fmt(x.est)}</td><td>${fmt(x.inv)}</td><td>${fmt(x.paid)}</td>
-      <td class="${b && d < 0 ? 'neg' : ''}">${b ? fmt(d) : '—'}</td></tr>`;
+      <td class="${b && d < 0 ? 'neg' : ''}">${b ? fmt(d) : '—'}</td>
+      <td>${pctBar(x.est, budget)}</td></tr>`;
   }).join('');
   const sumBt = Object.values(bt).reduce((a, v) => a + (Number(v) || 0), 0);
   const noticeLine = L ? [L.n.headerCfg?.venue, L.n.headerCfg?.date].filter(Boolean).map(esc).join('｜') || '已連結工作通告' : p.noticeId ? '<span class="neg">對應的通告已被刪除</span>' : p.noticeRef ? '對應通告：' + esc(p.noticeRef) : '未連結工作通告';
@@ -727,9 +740,9 @@ function renderDetail() {
     </div>
     ${tradesUsed.length ? `<h3 class="sec">工種分析（含稅）</h3>
     <div class="tbl-wrap"><table class="num">
-      <thead><tr><th>工種</th><th>預算</th><th>成本</th><th>廠商請款</th><th>已付款</th><th>預算 − 成本</th></tr></thead>
+      <thead><tr><th>工種</th><th>預算</th><th>成本</th><th>廠商請款</th><th>已付款</th><th>預算 − 成本</th><th>佔總預算</th></tr></thead>
       <tbody>${tradeRows}
-      <tr class="total"><td>合計</td><td>${sumBt ? fmt(sumBt) : '—'}</td><td>${fmt(s.est)}</td><td>${fmt(s.inv)}</td><td>${fmt(s.paid)}</td><td>${sumBt ? fmt(sumBt - s.est) : '—'}</td></tr>
+      <tr class="total"><td>合計</td><td>${sumBt ? fmt(sumBt) : '—'}</td><td>${fmt(s.est)}</td><td>${fmt(s.inv)}</td><td>${fmt(s.paid)}</td><td>${sumBt ? fmt(sumBt - s.est) : '—'}</td><td>${pctBar(s.est, budget)}</td></tr>
       </tbody></table></div>` : ''}
     ${L ? slotSectionHTML(p, L) : ''}
     <h3 class="sec">全部成本項目</h3>
@@ -1062,11 +1075,11 @@ function entryRows(ps) {
 function tradeRows(ps) {
   const out = [];
   ps.forEach(p => {
-    const s = summarize(p.id), bt = p.budgetByTrade || {};
+    const s = summarize(p.id), bt = p.budgetByTrade || {}, pb = Number(p.budget) || 0;
     const ts_ = [...new Set([...tradeNames().filter(t => bt[t] || s.byTrade[t]), ...Object.keys(bt), ...Object.keys(s.byTrade)])];
     ts_.forEach(t => {
       const b = Number(bt[t]) || 0, x = s.byTrade[t] || { est: 0, inv: 0, paid: 0 };
-      out.push({ '專案': projName(p), '工種': t, '預算': b || '', '成本': x.est, '廠商請款': x.inv, '已付款': x.paid, '預算−成本': b ? b - x.est : '' });
+      out.push({ '專案': projName(p), '工種': t, '預算': b || '', '成本': x.est, '廠商請款': x.inv, '已付款': x.paid, '預算−成本': b ? b - x.est : '', '佔總預算': pb ? Math.round(x.est / pb * 1000) / 10 + '%' : '' });
     });
   });
   return out;
@@ -1088,7 +1101,7 @@ async function exportExcel(projectId) {
     if (!ps.length) return toast('目前沒有可匯出的專案', true);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, sheet(ps.map(projectRow), [28, 8, 22, 22, 12, 12, 12, 12, 12, 12, 12, 12, 9, 13, 13]), '專案總表');
-    XLSX.utils.book_append_sheet(wb, sheet(tradeRows(ps), [28, 12, 12, 12, 12, 12, 12]), '工種統計');
+    XLSX.utils.book_append_sheet(wb, sheet(tradeRows(ps), [28, 12, 12, 12, 12, 12, 12, 10]), '工種統計');
     XLSX.utils.book_append_sheet(wb, sheet(entryRows(ps), [28, 11, 10, 16, 30, 12, 6, 12, 8, 6, 30, 30, 20]), '成本明細');
     if (projectId) { const sr = slotRows(ps[0]); if (sr) XLSX.utils.book_append_sheet(wb, sheet(sr, [14, 10, 40, 16, 9, 14, 11]), '通告工項對照'); }
     const name = projectId ? `成本統計_${safeName(projName(ps[0]))}_${stamp()}.xlsx` : `成本統計_${listFilter}_${stamp()}.xlsx`;
