@@ -102,7 +102,7 @@ main{max-width:1080px;margin:0 auto;padding:24px}
 .dhead .sub{color:var(--muted);font-size:14px}
 .dhead .acts{display:flex;gap:8px;flex-wrap:wrap}
 .dsum{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;margin-bottom:24px}
-.dsum .figs{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.dsum .figs{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:12px;margin-bottom:18px}
 .dsum .figs span{display:block;font-size:13px;color:var(--muted)}
 .dsum .figs strong{font-size:20px}
 .dsum .ruler{height:14px;border-radius:7px}
@@ -202,6 +202,7 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
 .pct-bar i.over{background:var(--over)}
 .pct span:last-child{min-width:46px;text-align:right}
 
+.unpaid{color:#b26a00}
 @media (max-width:720px){
   main{padding:16px}
   header.top{padding:12px 16px}
@@ -209,7 +210,7 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
   .overview{grid-template-columns:1fr 1fr}
   .prow{grid-template-columns:1fr;gap:10px}
   .prow .pfig{text-align:left}
-  .dsum .figs{grid-template-columns:1fr 1fr 1fr}
+  .dsum .figs{grid-template-columns:1fr 1fr}
   .erow{grid-template-columns:1fr auto;gap:6px 12px}
   .erow .date{grid-column:1/-1}
   .erow .ops{grid-column:1/-1;justify-content:flex-end}
@@ -706,7 +707,7 @@ function renderDetail() {
   const tradeRows = tradesUsed.map(t => {
     const b = Number(bt[t]) || 0, x = s.byTrade[t] || { est: 0, inv: 0, paid: 0 }, d = b - x.est;
     return `<tr><td><span class="dot" style="background:${tradeColor(t)}"></span>${esc(t)}</td>
-      <td>${b ? fmt(b) : '—'}</td><td>${fmt(x.est)}</td><td>${fmt(x.inv)}</td><td>${fmt(x.paid)}</td>
+      <td>${b ? fmt(b) : '—'}</td><td>${fmt(x.est)}</td><td>${fmt(x.inv)}</td><td>${fmt(x.paid)}</td><td class="${x.est - x.paid > 0 ? 'unpaid' : ''}">${fmt(x.est - x.paid)}</td>
       <td class="${b && d < 0 ? 'neg' : ''}">${b ? fmt(d) : '—'}</td>
       <td>${pctBar(x.est, budget)}</td></tr>`;
   }).join('');
@@ -732,6 +733,7 @@ function renderDetail() {
         <div><span>成本</span><strong>${fmt(s.est)}</strong></div>
         <div><span>廠商請款</span><strong>${fmt(s.inv)}</strong></div>
         <div><span>已付款</span><strong>${fmt(s.paid)}</strong></div>
+        <div title="成本 − 已付款（含廠商未請款與已請款未付）"><span>未付款</span><strong class="${s.est - s.paid > 0 ? 'unpaid' : ''}">${fmt(s.est - s.paid)}</strong>${s.inv - s.paid > 0 ? `<small style="display:block;font-size:11px;color:var(--muted)">已請款待付 ${fmt(s.inv - s.paid)}</small>` : ''}</div>
         <div><span>${remain < 0 ? '超出預算' : '預算餘額'}</span><strong class="${budget ? (remain < 0 ? 'neg' : 'pos') : ''}">${budget ? fmt(Math.abs(remain)) : '—'}</strong></div>
         <div title="標案金額 − 成本 − 標案金額 × ${TAX_RATE * 100}% 稅額"><span>利潤</span><strong class="${contract ? (profit < 0 ? 'neg' : 'pos') : ''}">${contract ? fmt(profit) : '—'}</strong>${contract ? `<small style="display:block;font-size:11px;color:var(--muted)">稅額 ${fmt(Math.round(contract * TAX_RATE))}｜${(profit / contract * 100).toFixed(1)}%</small>` : ''}</div>
       </div>
@@ -740,9 +742,9 @@ function renderDetail() {
     </div>
     ${tradesUsed.length ? `<h3 class="sec">工種分析（含稅）</h3>
     <div class="tbl-wrap"><table class="num">
-      <thead><tr><th>工種</th><th>預算</th><th>成本</th><th>廠商請款</th><th>已付款</th><th>預算 − 成本</th><th>佔總預算</th></tr></thead>
+      <thead><tr><th>工種</th><th>預算</th><th>成本</th><th>廠商請款</th><th>已付款</th><th>未付款</th><th>預算 − 成本</th><th>佔總預算</th></tr></thead>
       <tbody>${tradeRows}
-      <tr class="total"><td>合計</td><td>${sumBt ? fmt(sumBt) : '—'}</td><td>${fmt(s.est)}</td><td>${fmt(s.inv)}</td><td>${fmt(s.paid)}</td><td>${sumBt ? fmt(sumBt - s.est) : '—'}</td><td>${pctBar(s.est, budget)}</td></tr>
+      <tr class="total"><td>合計</td><td>${sumBt ? fmt(sumBt) : '—'}</td><td>${fmt(s.est)}</td><td>${fmt(s.inv)}</td><td>${fmt(s.paid)}</td><td>${fmt(s.est - s.paid)}</td><td>${sumBt ? fmt(sumBt - s.est) : '—'}</td><td>${pctBar(s.est, budget)}</td></tr>
       </tbody></table></div>` : ''}
     ${L ? slotSectionHTML(p, L) : ''}
     <h3 class="sec">全部成本項目</h3>
@@ -1054,7 +1056,7 @@ function projectRow(p) {
   const s = summarize(p.id), b = Number(p.budget) || 0, L = linkage(p), h = L?.n.headerCfg || {};
   const ct = Number(p.contractAmount) || 0;
   return { '專案': projName(p), '狀態': projStatus(p), '地點': h.venue || '', '期間': h.date || '',
-    '標案金額': ct || '', '預算': b, '成本': s.est, '廠商請款': s.inv, '已付款': s.paid, '預算餘額': b ? b - s.est : '',
+    '標案金額': ct || '', '預算': b, '成本': s.est, '廠商請款': s.inv, '已付款': s.paid, '未付款': s.est - s.paid, '預算餘額': b ? b - s.est : '',
     '稅額(11%)': ct ? Math.round(ct * TAX_RATE) : '', '利潤': ct ? profitOf(ct, s.est) : '',
     '成本筆數': s.count, '未建立成本工項': L ? L.missing : '', '通告異動待確認': L ? L.changedEntries.length + L.orphans.length : '' };
 }
@@ -1079,7 +1081,7 @@ function tradeRows(ps) {
     const ts_ = [...new Set([...tradeNames().filter(t => bt[t] || s.byTrade[t]), ...Object.keys(bt), ...Object.keys(s.byTrade)])];
     ts_.forEach(t => {
       const b = Number(bt[t]) || 0, x = s.byTrade[t] || { est: 0, inv: 0, paid: 0 };
-      out.push({ '專案': projName(p), '工種': t, '預算': b || '', '成本': x.est, '廠商請款': x.inv, '已付款': x.paid, '預算−成本': b ? b - x.est : '', '佔總預算': pb ? Math.round(x.est / pb * 1000) / 10 + '%' : '' });
+      out.push({ '專案': projName(p), '工種': t, '預算': b || '', '成本': x.est, '廠商請款': x.inv, '已付款': x.paid, '未付款': x.est - x.paid, '預算−成本': b ? b - x.est : '', '佔總預算': pb ? Math.round(x.est / pb * 1000) / 10 + '%' : '' });
     });
   });
   return out;
@@ -1100,8 +1102,8 @@ async function exportExcel(projectId) {
       : listItems().filter(i => i.p && (listFilter === '全部' || i.status === listFilter)).map(i => i.p);
     if (!ps.length) return toast('目前沒有可匯出的專案', true);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sheet(ps.map(projectRow), [28, 8, 22, 22, 12, 12, 12, 12, 12, 12, 12, 12, 9, 13, 13]), '專案總表');
-    XLSX.utils.book_append_sheet(wb, sheet(tradeRows(ps), [28, 12, 12, 12, 12, 12, 12, 10]), '工種統計');
+    XLSX.utils.book_append_sheet(wb, sheet(ps.map(projectRow), [28, 8, 22, 22, 12, 12, 12, 12, 12, 12, 12, 12, 12, 9, 13, 13]), '專案總表');
+    XLSX.utils.book_append_sheet(wb, sheet(tradeRows(ps), [28, 12, 12, 12, 12, 12, 12, 12, 10]), '工種統計');
     XLSX.utils.book_append_sheet(wb, sheet(entryRows(ps), [28, 11, 10, 16, 30, 12, 6, 12, 8, 6, 30, 30, 20]), '成本明細');
     if (projectId) { const sr = slotRows(ps[0]); if (sr) XLSX.utils.book_append_sheet(wb, sheet(sr, [14, 10, 40, 16, 9, 14, 11]), '通告工項對照'); }
     const name = projectId ? `成本統計_${safeName(projName(ps[0]))}_${stamp()}.xlsx` : `成本統計_${listFilter}_${stamp()}.xlsx`;
