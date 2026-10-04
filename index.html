@@ -191,8 +191,9 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
 .linkbox input{flex:1;min-width:0}
 .btn.openlink{text-decoration:none;display:inline-flex;align-items:center;white-space:nowrap;color:var(--brand);border-color:var(--brand)}
 .btn.openlink.disabled{color:var(--muted);border-color:var(--line);pointer-events:none;opacity:.6}
-.filebtn{font-size:12px;color:var(--brand);text-decoration:none;border:1px solid var(--brand-soft);background:var(--brand-soft);border-radius:6px;padding:3px 8px;white-space:nowrap}
-.filebtn:hover{border-color:var(--brand)}
+.filebtn{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:var(--brand);text-decoration:none;white-space:nowrap;padding:3px 4px}
+.filebtn:hover{text-decoration:underline}
+.ico{flex-shrink:0}
 .echipwrap{display:inline-flex;gap:4px;align-items:center}
 
 @media (max-width:720px){
@@ -287,7 +288,7 @@ details.more summary{cursor:pointer;font-size:14px;color:var(--brand);margin-bot
     <label class="check"><input type="checkbox" id="eOut"> 外包施作</label>
     <div class="field"><label for="eLink">相關檔案連結（報價單、發票）</label>
       <div class="linkbox"><input id="eLink" type="url" placeholder="貼上 Google 雲端硬碟的檔案或資料夾連結">
-      <a id="eLinkOpen" class="btn openlink disabled" target="_blank" rel="noopener noreferrer" aria-disabled="true">開啟</a></div>
+      <a id="eLinkOpen" class="btn openlink disabled" target="_blank" rel="noopener noreferrer" aria-disabled="true"><svg class="ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 9.5a3 3 0 004.2 0l2-2a3 3 0 00-4.2-4.2l-1 1"/><path d="M9.5 6.5a3 3 0 00-4.2 0l-2 2a3 3 0 004.2 4.2l1-1"/></svg>&nbsp;開啟</a></div>
       <div class="hint" id="eLinkHint" style="margin:4px 0 0"></div></div>
     <div class="field"><label for="eNote">備註</label><textarea id="eNote"></textarea></div>
     <div class="mfoot">
@@ -614,7 +615,7 @@ function openProject(id) {
 
 function fileBtn(e) {
   const link = safeLink(e.fileLink);
-  return link ? `<a class="filebtn" href="${esc(link)}" target="_blank" rel="noopener noreferrer" title="${esc(link)}">📎 查看檔案</a>` : '';
+  return link ? `<a class="filebtn" href="${esc(link)}" target="_blank" rel="noopener noreferrer" title="${esc(link)}"><svg class="ico" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 9.5a3 3 0 004.2 0l2-2a3 3 0 00-4.2-4.2l-1 1"/><path d="M9.5 6.5a3 3 0 00-4.2 0l-2 2a3 3 0 004.2 4.2l1-1"/></svg> 查看相關檔案</a>` : '';
 }
 function entryChip(e, dup) {
   return `<span class="echipwrap"><button class="echip${dup ? ' dup' : ''}" data-action="edit-entry" data-id="${esc(e.id)}"><span>${esc(e.vendor || '未填廠商')}</span><b class="num">${fmt(taxed(e))}</b><span class="st st-${esc(e.status)}">${esc(e.status)}</span></button>${fileBtn(e)}</span>`;
